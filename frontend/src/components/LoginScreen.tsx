@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { identify, AuthUser } from "../api";
+import { saveConnection } from "../connections";
+import RecentConnections from "./RecentConnections";
 
 interface Props {
   onAuthenticated: (params: { backendUrl: string; token: string; user: AuthUser }) => void;
@@ -33,6 +35,7 @@ export default function LoginScreen({ onAuthenticated, initialBackendUrl, onBack
       const result = await identify(cleanUrl, cleanUsername);
       localStorage.setItem("backendUrl", cleanUrl);
       localStorage.setItem("lastUsername", cleanUsername);
+      saveConnection(cleanUrl, cleanUsername);
       onAuthenticated({ backendUrl: cleanUrl, token: result.token, user: result.user });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível conectar ao backend.");
@@ -42,33 +45,37 @@ export default function LoginScreen({ onAuthenticated, initialBackendUrl, onBack
   }
 
   return (
-    <form className="auth-screen" onSubmit={handleSubmit}>
-      <h2>Entrar</h2>
+    <div className="auth-screen">
+      <RecentConnections onAuthenticated={onAuthenticated} />
 
-      <label>URL do backend</label>
-      <input value={backendUrl} onChange={(e) => setBackendUrl(e.target.value)} />
+      <form onSubmit={handleSubmit}>
+        <h2>Entrar</h2>
 
-      <label>Seu nome</label>
-      <input
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-        placeholder="Como os outros vão te ver"
-        autoFocus
-      />
+        <label>URL do backend</label>
+        <input value={backendUrl} onChange={(e) => setBackendUrl(e.target.value)} />
 
-      <div className="auth-actions">
-        <button type="submit" disabled={loading}>
-          {loading ? "Entrando..." : "Entrar"}
-        </button>
-      </div>
+        <label>Seu nome</label>
+        <input
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="Como os outros vão te ver"
+          autoFocus
+        />
 
-      {onBack && (
-        <button type="button" className="link-btn" onClick={onBack}>
-          ← Voltar
-        </button>
-      )}
+        <div className="auth-actions">
+          <button type="submit" disabled={loading}>
+            {loading ? "Entrando..." : "Entrar"}
+          </button>
+        </div>
 
-      {error && <p className="auth-error">{error}</p>}
-    </form>
+        {onBack && (
+          <button type="button" className="link-btn" onClick={onBack}>
+            ← Voltar
+          </button>
+        )}
+
+        {error && <p className="auth-error">{error}</p>}
+      </form>
+    </div>
   );
 }

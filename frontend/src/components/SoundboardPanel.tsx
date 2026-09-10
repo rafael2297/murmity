@@ -4,6 +4,8 @@ import { useLocalParticipant } from "@livekit/components-react";
 import { fetchSounds, fetchEmojis, SoundboardSound, CustomEmoji } from "../api";
 import { renderMessageText, buildEmojiUrlMap } from "../emojiText";
 import { playSoundboardSound } from "../soundboard";
+import { useSoundboardVolume } from "../SoundboardVolumeContext";
+import SoundboardVolumeControl from "./SoundboardVolumeControl";
 
 interface Props {
   onClose: () => void;
@@ -18,6 +20,7 @@ interface Props {
  */
 export default function SoundboardPanel({ onClose, backendUrl, authToken }: Props) {
   const { localParticipant } = useLocalParticipant();
+  const { volume } = useSoundboardVolume();
 
   const [sounds, setSounds] = useState<SoundboardSound[]>([]);
   const [customEmojis, setCustomEmojis] = useState<CustomEmoji[]>([]);
@@ -52,7 +55,7 @@ export default function SoundboardPanel({ onClose, backendUrl, authToken }: Prop
 
   async function handlePlay(sound: SoundboardSound) {
     try {
-      await playSoundboardSound(`${backendUrl}${sound.url}`, localParticipant);
+      await playSoundboardSound(`${backendUrl}${sound.url}`, localParticipant, volume);
     } catch (err) {
       console.warn("Erro ao tocar som do soundboard:", err);
     }
@@ -67,6 +70,8 @@ export default function SoundboardPanel({ onClose, backendUrl, authToken }: Prop
             <X size={18} />
           </button>
         </div>
+
+        <SoundboardVolumeControl />
 
         {loading ? (
           <p className="device-select-empty">Carregando sons...</p>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Smile, Paperclip, Image as ImageIcon, X } from "lucide-react";
+import { Smile, Paperclip, Image as ImageIcon, X, ArrowDown, Pencil, Trash2, CornerUpLeft } from "lucide-react";
 import { useChatConnection, ChatAttachment } from "../ChatConnectionContext";
 import { fetchEmojis, uploadAttachment, fetchLinkPreview, CustomEmoji, LinkPreview } from "../api";
 import { renderMessageContent, buildEmojiUrlMap } from "../emojiText";
@@ -23,8 +23,14 @@ function formatTime(timestamp: number) {
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
 
 export default function ChatPanel({ username, backendUrl, authToken }: Props) {
-  const { messages, connected, sendMessage } = useChatConnection();
+  const { messages, connected, sendMessage, editMessage, deleteMessage } = useChatConnection();
   const [draft, setDraft] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [replyingTo, setReplyingTo] = useState<{ id: string; username: string; text: string } | null>(
+    null
+  );
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [customEmojis, setCustomEmojis] = useState<CustomEmoji[]>([]);
@@ -32,14 +38,52 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [linkPreviews, setLinkPreviews] = useState<Map<string, LinkPreview>>(new Map());
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const fetchedUrlsRef = useRef<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const messageElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const hasScrolledToInitialBottomRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  function isNearBottom(): boolean {
+    const el = messagesContainerRef.current;
+    if (!el) return true;
+    // Folga de 150px — não precisa estar exatamente no fim pra contar
+    // como "acompanhando o chat".
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+  }
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length === 0) return;
+
+    if (!hasScrolledToInitialBottomRef.current) {
+      // Primeira carga (histórico chegando pela primeira vez): pula
+      // direto pro final SEM animação. Sem isso, dava pra ver o topo do
+      // histórico por um instante antes do scroll suave "voar" lá pra
+      // baixo — e piorava quanto mais mensagem tivesse no chat.
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      hasScrolledToInitialBottomRef.current = true;
+      return;
+    }
+
+    if (isNearBottom()) {
+      // Já estava acompanhando o fim da conversa — acompanha a mensagem
+      // nova também, com animação suave.
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      setShowJumpToBottom(false);
+    } else {
+      // Rolou pra cima pra ler histórico — não puxa a pessoa de volta à
+      // força, só avisa que chegou mensagem nova.
+      setShowJumpToBottom(true);
+    }
   }, [messages]);
+
+  function scrollToBottom() {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    setShowJumpToBottom(false);
+  }
 
   // Carrega os emojis personalizados uma vez, pra saber traduzir ":codigo:"
   // em imagem nas mensagens já recebidas. Se alguém adicionar um emoji
@@ -80,9 +124,13 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
 
   function send() {
     if (!draft.trim() && !pendingAttachment) return;
-    sendMessage(draft, pendingAttachment ?? undefined);
+    sendMessage(draft, pendingAttachment ?? undefined, replyingTo?.id);
     setDraft("");
     setPendingAttachment(null);
+    setReplyingTo(null);
+    // Mandar uma mensagem é uma ação sua — faz sentido te levar de volta
+    // pro final, mesmo que estivesse lendo histórico mais acima.
+    scrollToBottom();
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -90,6 +138,57 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
       e.preventDefault();
       send();
     }
+  }
+
+  function startEdit(id: string, text: string) {
+    setEditingId(id);
+    setEditText(text);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditText("");
+  }
+
+  function saveEdit() {
+    if (!editingId) return;
+    editMessage(editingId, editText);
+    setEditingId(null);
+    setEditText("");
+  }
+
+  function handleEditKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      saveEdit();
+    } else if (e.key === "Escape") {
+      cancelEdit();
+    }
+  }
+
+  function handleDeleteMessage(id: string) {
+    const confirmed = window.confirm("Apagar essa mensagem? Não tem como desfazer.");
+    if (!confirmed) return;
+    deleteMessage(id);
+  }
+
+  function startReply(m: { id: string; username: string; text: string }) {
+    setReplyingTo({ id: m.id, username: m.username, text: m.text });
+    textareaRef.current?.focus();
+  }
+
+  function cancelReply() {
+    setReplyingTo(null);
+  }
+
+  function jumpToMessage(id: string) {
+    const el = messageElementsRef.current.get(id);
+    if (!el) return; // mensagem original não está carregada (fora do histórico) — nada pra pular
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedId(id);
+    setTimeout(() => {
+      setHighlightedId((current) => (current === id ? null : current));
+    }, 1500);
   }
 
   function insertAtCursor(text: string) {
@@ -123,7 +222,8 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
     // GIF já está hospedado pela Klipy — não precisa passar pelo nosso
     // backend, é só mandar a URL direto como anexo.
     setGifPickerOpen(false);
-    sendMessage("", { url: gif.url, type: "gif" });
+    sendMessage("", { url: gif.url, type: "gif" }, replyingTo?.id);
+    setReplyingTo(null);
   }
 
   async function uploadPickedFile(file: File) {
@@ -166,7 +266,7 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
 
   return (
     <div className="chat-panel">
-      <div className="chat-messages">
+      <div className="chat-messages" ref={messagesContainerRef}>
         {messages.length === 0 && <p className="chat-empty">Nenhuma mensagem ainda.</p>}
         {messages.map((m, i) => {
           const prev = messages[i - 1];
@@ -175,19 +275,54 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
             prev.username === m.username &&
             m.timestamp - prev.timestamp < GROUP_WINDOW_MS &&
             !prev.attachmentUrl &&
-            !m.attachmentUrl;
+            !m.attachmentUrl &&
+            !m.replyToId; // resposta sempre quebra o agrupamento, pra deixar o contexto claro
 
           const youtubeUrl = m.text ? extractFirstYoutubeUrl(m.text) : null;
           const youtubePreview = youtubeUrl ? linkPreviews.get(youtubeUrl) : undefined;
+          const repliedMessage = m.replyToId ? messages.find((msg) => msg.id === m.replyToId) : undefined;
 
           return (
-            <div key={m.id} className={`chat-message-row ${grouped ? "grouped" : ""}`}>
+            <div
+              key={m.id}
+              ref={(el) => {
+                if (el) messageElementsRef.current.set(m.id, el);
+                else messageElementsRef.current.delete(m.id);
+              }}
+              className={`chat-message-row ${grouped ? "grouped" : ""} ${
+                highlightedId === m.id ? "highlighted" : ""
+              }`}
+            >
               {!grouped && (
                 <div className="user-avatar" title={m.username}>
                   {m.username.slice(0, 2).toUpperCase()}
                 </div>
               )}
               <div className="chat-message-body">
+                {m.replyToId && (
+                  <button className="chat-reply-quote" onClick={() => jumpToMessage(m.replyToId!)}>
+                    <CornerUpLeft size={12} />
+                    {repliedMessage ? (
+                      <>
+                        <span className="chat-reply-quote-author">{repliedMessage.username}</span>
+                        <span className="chat-reply-quote-text">
+                          {repliedMessage.text
+                            ? repliedMessage.text.slice(0, 80)
+                            : repliedMessage.attachmentType === "gif"
+                              ? "[GIF]"
+                              : repliedMessage.attachmentType === "image"
+                                ? "[imagem]"
+                                : repliedMessage.attachmentType === "audio"
+                                  ? "[áudio]"
+                                  : ""}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="chat-reply-quote-missing">Mensagem original não disponível</span>
+                    )}
+                  </button>
+                )}
+
                 {!grouped && (
                   <div className="chat-message-meta">
                     <span className={`chat-author ${m.username === username ? "own" : ""}`}>
@@ -196,12 +331,37 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
                     <span className="chat-timestamp">{formatTime(m.timestamp)}</span>
                   </div>
                 )}
-                {m.text && (
-                  <div className="chat-text-row">
-                    <span className="chat-text">{renderMessageContent(m.text, emojiByCode)}</span>
-                    {grouped && <span className="chat-timestamp-hover">{formatTime(m.timestamp)}</span>}
+
+                {editingId === m.id ? (
+                  <div className="chat-edit-row">
+                    <textarea
+                      className="chat-edit-input"
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      onKeyDown={handleEditKeyDown}
+                      autoFocus
+                      rows={1}
+                    />
+                    <div className="chat-edit-actions">
+                      <span>esc pra cancelar • enter pra salvar</span>
+                      <button className="link-btn" onClick={cancelEdit}>
+                        Cancelar
+                      </button>
+                      <button className="link-btn" onClick={saveEdit}>
+                        Salvar
+                      </button>
+                    </div>
                   </div>
+                ) : (
+                  m.text && (
+                    <div className="chat-text-row">
+                      <span className="chat-text">{renderMessageContent(m.text, emojiByCode)}</span>
+                      {m.editedAt && <span className="chat-edited-tag">(editado)</span>}
+                      {grouped && <span className="chat-timestamp-hover">{formatTime(m.timestamp)}</span>}
+                    </div>
+                  )
                 )}
+
                 {youtubeUrl && youtubePreview && (
                   <YoutubeEmbed preview={youtubePreview} sourceUrl={youtubeUrl} />
                 )}
@@ -226,11 +386,49 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
                   </a>
                 ) : null}
               </div>
+
+              {editingId !== m.id && (
+                <div className="chat-message-actions">
+                  <button
+                    className="icon-btn small"
+                    onClick={() => startReply({ id: m.id, username: m.username, text: m.text })}
+                    title="Responder"
+                  >
+                    <CornerUpLeft size={13} />
+                  </button>
+                  {m.username === username && (
+                    <>
+                      {m.text && (
+                        <button
+                          className="icon-btn small"
+                          onClick={() => startEdit(m.id, m.text)}
+                          title="Editar"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                      )}
+                      <button
+                        className="icon-btn small muted"
+                        onClick={() => handleDeleteMessage(m.id)}
+                        title="Apagar"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
         <div ref={bottomRef} />
       </div>
+
+      {showJumpToBottom && (
+        <button className="chat-jump-to-bottom" onClick={scrollToBottom}>
+          <ArrowDown size={14} /> Novas mensagens
+        </button>
+      )}
 
       {(pendingAttachment || uploading || uploadError) && (
         <div className="chat-pending-attachment">
@@ -254,6 +452,19 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
               </button>
             </>
           ) : null}
+        </div>
+      )}
+
+      {replyingTo && (
+        <div className="chat-reply-bar">
+          <CornerUpLeft size={14} />
+          <span>
+            Respondendo a <strong>{replyingTo.username}</strong>
+            {replyingTo.text && `: ${replyingTo.text.slice(0, 60)}`}
+          </span>
+          <button className="icon-btn small muted" onClick={cancelReply} title="Cancelar resposta">
+            <X size={14} />
+          </button>
         </div>
       )}
 

@@ -2,15 +2,18 @@ import { useEffect, useState } from "react";
 import { Server, LogIn } from "lucide-react";
 import { startBackendSidecar, startLiveKitSidecar, isEnvElectron } from "../host";
 import { listNetworkInterfaces, pickBestInterface, NetworkInterfaceOption } from "../network";
+import { AuthUser } from "../api";
+import RecentConnections from "./RecentConnections";
 
 interface Props {
   onHostReady: (backendUrl: string) => void;
   onJoinExisting: () => void;
+  onAuthenticated: (params: { backendUrl: string; token: string; user: AuthUser }) => void;
 }
 
 type Step = "choose" | "network" | "starting";
 
-export default function StartScreen({ onHostReady, onJoinExisting }: Props) {
+export default function StartScreen({ onHostReady, onJoinExisting, onAuthenticated }: Props) {
   const [step, setStep] = useState<Step>("choose");
   const [interfaces, setInterfaces] = useState<NetworkInterfaceOption[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<string>("");
@@ -95,6 +98,8 @@ export default function StartScreen({ onHostReady, onJoinExisting }: Props) {
               em servidor" com a URL do backend rodando via Docker/script.
             </p>
           )}
+
+          <RecentConnections onAuthenticated={onAuthenticated} />
         </>
       )}
 

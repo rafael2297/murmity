@@ -24,13 +24,17 @@ interface ChatMessage {
   attachmentUrl?: string | null;
   attachmentType?: AttachmentType | null;
   attachmentName?: string | null;
+  editedAt?: number | null;
+  replyToId?: string | null;
 }
 
 interface ChatConnectionValue {
   messages: ChatMessage[];
   onlineUsers: string[];
   connected: boolean;
-  sendMessage: (text: string, attachment?: ChatAttachment) => void;
+  sendMessage: (text: string, attachment?: ChatAttachment, replyToId?: string) => void;
+  editMessage: (id: string, text: string) => void;
+  deleteMessage: (id: string) => void;
 }
 
 const ChatConnectionContext = createContext<ChatConnectionValue | null>(null);
@@ -106,6 +110,12 @@ export function ChatConnectionProvider({ backendUrl, authToken, username, childr
           }
         } else if (data.type === "presence") {
           setOnlineUsers(data.online);
+        } else if (data.type === "message_edited") {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === data.id ? { ...m, text: data.text, editedAt: data.editedAt } : m))
+          );
+        } else if (data.type === "message_deleted") {
+          setMessages((prev) => prev.filter((m) => m.id !== data.id));
         }
       };
     }
@@ -119,7 +129,7 @@ export function ChatConnectionProvider({ backendUrl, authToken, username, childr
     };
   }, [backendUrl, authToken, username]);
 
-  function sendMessage(text: string, attachment?: ChatAttachment) {
+  function sendMessage(text: string, attachment?: ChatAttachment, replyToId?: string) {
     const clean = text.trim();
     // Precisa ter texto OU anexo — as duas coisas vazias não manda nada
     // (mesma regra do backend, ver chat.ts).
@@ -133,12 +143,25 @@ export function ChatConnectionProvider({ backendUrl, authToken, username, childr
         attachmentUrl: attachment?.url,
         attachmentType: attachment?.type,
         attachmentName: attachment?.name,
+        replyToId,
       })
     );
   }
 
+  function editMessage(id: string, text: string) {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({ type: "edit", id, text: text.trim() }));
+  }
+
+  function deleteMessage(id: string) {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({ type: "delete", id }));
+  }
+
   return (
-    <ChatConnectionContext.Provider value={{ messages, onlineUsers, connected, sendMessage }}>
+    <ChatConnectionContext.Provider
+      value={{ messages, onlineUsers, connected, sendMessage, editMessage, deleteMessage }}
+    >
       {children}
     </ChatConnectionContext.Provider>
   );

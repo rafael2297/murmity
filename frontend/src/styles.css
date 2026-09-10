@@ -246,6 +246,69 @@ body {
   color: var(--text-muted);
 }
 
+/* Conexões recentes (RecentConnections.tsx) — usado tanto na tela
+   inicial quanto na de login manual. */
+
+.recent-connections {
+  margin-top: 24px;
+  text-align: left;
+}
+
+.recent-connections-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.recent-connections-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recent-connection-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid #3a3c41;
+  border-radius: 6px;
+  padding: 4px 6px 4px 12px;
+}
+
+.recent-connection-main {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+.recent-connection-username {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.recent-connection-url {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-connection-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  padding: 0 8px;
+}
+
 .start-log {
   margin-top: 16px;
   background: var(--bg-tertiary);
@@ -655,6 +718,42 @@ body {
   margin: 0;
   font-size: 15px;
   color: var(--text-bright);
+}
+
+/* Controle de volume de RECEBER sons do soundboard (ver
+   SoundboardVolumeControl.tsx) — usado tanto no painel de usar quanto
+   nas Configurações. */
+
+.soundboard-volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--text-muted);
+}
+
+.soundboard-volume-control input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.soundboard-volume-value {
+  font-size: 12px;
+  width: 34px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.soundboard-volume-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.settings-divider {
+  border: none;
+  border-top: 1px solid var(--bg-tertiary);
+  margin: 16px 0;
 }
 
 /* Grade de USAR (SoundboardPanel, aberto pela barra de voz) — cada
@@ -1481,6 +1580,35 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+/* Botão "novas mensagens" — só aparece quando chega mensagem nova
+   enquanto a pessoa está com o scroll subido lendo histórico (ver
+   ChatPanel.tsx). Fica flutuando por cima da lista, colado no rodapé. */
+
+.chat-jump-to-bottom {
+  position: absolute;
+  bottom: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 5;
+}
+
+.chat-jump-to-bottom:hover {
+  background: var(--accent-hover);
 }
 
 .chat-messages {
@@ -1502,6 +1630,7 @@ body {
   display: flex;
   gap: 12px;
   padding: 2px 0;
+  position: relative;
 }
 
 .chat-message-row:hover {
@@ -1512,6 +1641,134 @@ body {
 
 .chat-message-row.grouped {
   padding-left: 44px;
+}
+
+/* Botões de editar/apagar — só aparecem no hover, e só nas mensagens
+   da própria pessoa (ver ChatPanel.tsx). */
+
+.chat-message-actions {
+  position: absolute;
+  top: -8px;
+  right: 8px;
+  display: none;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.chat-message-row:hover .chat-message-actions {
+  display: flex;
+}
+
+.chat-edited-tag {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.chat-edit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-edit-input {
+  width: 100%;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 6px 8px;
+  resize: none;
+}
+
+.chat-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.chat-edit-actions .link-btn {
+  font-size: 12px;
+}
+
+/* Citação de "respondendo a" dentro de uma mensagem (ver ChatPanel.tsx) */
+
+.chat-reply-quote {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 0 0 2px;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.chat-reply-quote:hover .chat-reply-quote-text {
+  text-decoration: underline;
+}
+
+.chat-reply-quote-author {
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.chat-reply-quote-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-reply-quote-missing {
+  font-style: italic;
+}
+
+/* Mensagem "piscando" brevemente quando você pula pra ela clicando numa
+   citação (ver jumpToMessage em ChatPanel.tsx). */
+
+.chat-message-row.highlighted {
+  animation: chat-message-highlight 1.5s ease-out;
+}
+
+@keyframes chat-message-highlight {
+  0% {
+    background: rgba(88, 101, 242, 0.15);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+/* Barra "Respondendo a..." acima do campo de digitar, quando ativa */
+
+.chat-reply-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--bg-secondary);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.chat-reply-bar strong {
+  color: var(--text);
+}
+
+.chat-reply-bar .icon-btn {
+  margin-left: auto;
 }
 
 .chat-message-row.grouped:hover {

@@ -12,10 +12,11 @@ const JWT_SECRET = process.env.JWT_SECRET as string;
 // limite (grupo pequeno, não precisa de paginação/arquivamento ainda).
 const HISTORY_LIMIT = 50; // quantas mensagens mandar pro cliente ao conectar
 const HISTORY_CAP = 500; // quantas mensagens manter no banco no total
+const MAX_TEXT_LENGTH = 2000;
 
 // Anexo é opcional e pode vir SOZINHO (sem texto, ex: mandou só um GIF)
 // ou junto com texto (ex: legenda + imagem). "gif" é uma URL externa
-// (Tenor), "image"/"audio" apontam pro nosso próprio /attachments/files.
+// (Klipy), "image"/"audio" apontam pro nosso próprio /attachments/files.
 type AttachmentType = "image" | "audio" | "gif";
 const ALLOWED_ATTACHMENT_TYPES: AttachmentType[] = ["image", "audio", "gif"];
 
@@ -27,19 +28,24 @@ interface ChatMessage {
   attachmentUrl?: string | null;
   attachmentType?: AttachmentType | null;
   attachmentName?: string | null;
+  editedAt?: number | null;
+  replyToId?: string | null;
 }
 
 const insertStmt = db.prepare(
-  `INSERT INTO messages (id, username, text, timestamp, attachment_url, attachment_type, attachment_name)
-   VALUES (?, ?, ?, ?, ?, ?, ?)`
+  `INSERT INTO messages (id, username, text, timestamp, attachment_url, attachment_type, attachment_name, reply_to_id)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 );
 const historyStmt = db.prepare(
-  `SELECT id, username, text, timestamp, attachment_url, attachment_type, attachment_name
+  `SELECT id, username, text, timestamp, attachment_url, attachment_type, attachment_name, edited_at, reply_to_id
    FROM messages ORDER BY timestamp DESC LIMIT ?`
 );
 const pruneStmt = db.prepare(
   "DELETE FROM messages WHERE id NOT IN (SELECT id FROM messages ORDER BY timestamp DESC LIMIT ?)"
 );
+const getByIdStmt = db.prepare("SELECT * FROM messages WHERE id = ?");
+const updateTextStmt = db.prepare("UPDATE messages SET text = ?, edited_at = ? WHERE id = ?");
+const deleteByIdStmt = db.prepare("DELETE FROM messages WHERE id = ?");
 
 interface MessageRow {
   id: string;
@@ -49,6 +55,8 @@ interface MessageRow {
   attachment_url: string | null;
   attachment_type: string | null;
   attachment_name: string | null;
+  edited_at: number | null;
+  reply_to_id: string | null;
 }
 
 function rowToMessage(row: MessageRow): ChatMessage {
@@ -60,6 +68,8 @@ function rowToMessage(row: MessageRow): ChatMessage {
     attachmentUrl: row.attachment_url,
     attachmentType: row.attachment_type as AttachmentType | null,
     attachmentName: row.attachment_name,
+    editedAt: row.edited_at,
+    replyToId: row.reply_to_id,
   };
 }
 
@@ -78,6 +88,10 @@ const onlineByIdentity = new Map<string, Set<WebSocket>>();
 
 function broadcastPresence() {
   const payload = JSON.stringify({ type: "presence", online: Array.from(onlineByIdentity.keys()) });
+  broadcast(payload);
+}
+
+function broadcast(payload: string) {
   for (const client of clients) {
     if (client.readyState === WebSocket.OPEN) {
       client.send(payload);
@@ -122,53 +136,21 @@ export function setupChat(wss: WebSocketServer) {
       } catch {
         return;
       }
-      if (typeof data !== "object" || data === null || (data as any).type !== "send") {
+      if (typeof data !== "object" || data === null) return;
+
+      const type = (data as any).type;
+
+      if (type === "send") {
+        handleSend(data, username);
         return;
       }
-
-      const rawText = typeof (data as any).text === "string" ? (data as any).text : "";
-      const text = rawText.trim().slice(0, 2000);
-
-      const rawAttachmentUrl = (data as any).attachmentUrl;
-      const rawAttachmentType = (data as any).attachmentType;
-      const hasAttachment =
-        typeof rawAttachmentUrl === "string" &&
-        rawAttachmentUrl.length > 0 &&
-        ALLOWED_ATTACHMENT_TYPES.includes(rawAttachmentType);
-
-      // Mensagem precisa ter TEXTO ou ANEXO — as duas vazias não é uma
-      // mensagem de verdade.
-      if (!text && !hasAttachment) return;
-
-      const message: ChatMessage = {
-        id: randomUUID(),
-        username,
-        text,
-        timestamp: Date.now(),
-        attachmentUrl: hasAttachment ? rawAttachmentUrl : null,
-        attachmentType: hasAttachment ? (rawAttachmentType as AttachmentType) : null,
-        attachmentName:
-          hasAttachment && typeof (data as any).attachmentName === "string"
-            ? (data as any).attachmentName.slice(0, 200)
-            : null,
-      };
-
-      insertStmt.run(
-        message.id,
-        message.username,
-        message.text,
-        message.timestamp,
-        message.attachmentUrl ?? null,
-        message.attachmentType ?? null,
-        message.attachmentName ?? null
-      );
-      pruneStmt.run(HISTORY_CAP);
-
-      const payload = JSON.stringify({ type: "message", message });
-      for (const client of clients) {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(payload);
-        }
+      if (type === "edit") {
+        handleEdit(data, username);
+        return;
+      }
+      if (type === "delete") {
+        handleDelete(data, username);
+        return;
       }
     });
 
@@ -183,4 +165,90 @@ export function setupChat(wss: WebSocketServer) {
       broadcastPresence();
     });
   });
+}
+
+function handleSend(data: unknown, username: string) {
+  const rawText = typeof (data as any).text === "string" ? (data as any).text : "";
+  const text = rawText.trim().slice(0, MAX_TEXT_LENGTH);
+
+  const rawAttachmentUrl = (data as any).attachmentUrl;
+  const rawAttachmentType = (data as any).attachmentType;
+  const hasAttachment =
+    typeof rawAttachmentUrl === "string" &&
+    rawAttachmentUrl.length > 0 &&
+    ALLOWED_ATTACHMENT_TYPES.includes(rawAttachmentType);
+
+  // Mensagem precisa ter TEXTO ou ANEXO — as duas vazias não é uma
+  // mensagem de verdade.
+  if (!text && !hasAttachment) return;
+
+  // Não valida se o ID respondido existe de verdade — é uma referência
+  // "solta" de propósito. Se a mensagem original já tiver sido apagada
+  // (ou estiver fora do histórico carregado), o cliente mostra um
+  // aviso genérico em vez da citação (ver ChatPanel.tsx).
+  const replyToId = typeof (data as any).replyToId === "string" ? (data as any).replyToId : null;
+
+  const message: ChatMessage = {
+    id: randomUUID(),
+    username,
+    text,
+    timestamp: Date.now(),
+    attachmentUrl: hasAttachment ? rawAttachmentUrl : null,
+    attachmentType: hasAttachment ? (rawAttachmentType as AttachmentType) : null,
+    attachmentName:
+      hasAttachment && typeof (data as any).attachmentName === "string"
+        ? (data as any).attachmentName.slice(0, 200)
+        : null,
+    editedAt: null,
+    replyToId,
+  };
+
+  insertStmt.run(
+    message.id,
+    message.username,
+    message.text,
+    message.timestamp,
+    message.attachmentUrl ?? null,
+    message.attachmentType ?? null,
+    message.attachmentName ?? null,
+    message.replyToId ?? null
+  );
+  pruneStmt.run(HISTORY_CAP);
+
+  broadcast(JSON.stringify({ type: "message", message }));
+}
+
+/**
+ * Só quem mandou a mensagem original pode editar. Mensagem só-anexo (sem
+ * texto e sem editar pra ter texto) continua válida — o texto pode virar
+ * vazio de novo se a pessoa apagar tudo no campo de edição, contanto que
+ * ainda tenha um anexo.
+ */
+function handleEdit(data: unknown, username: string) {
+  const id = typeof (data as any).id === "string" ? (data as any).id : "";
+  const rawText = typeof (data as any).text === "string" ? (data as any).text : "";
+  const text = rawText.trim().slice(0, MAX_TEXT_LENGTH);
+  if (!id) return;
+
+  const row = getByIdStmt.get(id) as unknown as MessageRow | undefined;
+  if (!row || row.username !== username) return; // não existe ou não é dono — ignora silenciosamente
+  if (!text && !row.attachment_url) return; // ficaria uma mensagem vazia de vez
+
+  const editedAt = Date.now();
+  updateTextStmt.run(text, editedAt, id);
+
+  broadcast(JSON.stringify({ type: "message_edited", id, text, editedAt }));
+}
+
+/** Só quem mandou a mensagem original pode apagar. */
+function handleDelete(data: unknown, username: string) {
+  const id = typeof (data as any).id === "string" ? (data as any).id : "";
+  if (!id) return;
+
+  const row = getByIdStmt.get(id) as unknown as MessageRow | undefined;
+  if (!row || row.username !== username) return;
+
+  deleteByIdStmt.run(id);
+
+  broadcast(JSON.stringify({ type: "message_deleted", id }));
 }

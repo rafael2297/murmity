@@ -1,13 +1,19 @@
-const { app, BrowserWindow, ipcMain, session, desktopCapturer } = require("electron");
+const { app, BrowserWindow, ipcMain, session, desktopCapturer, Tray, Menu, nativeImage } = require("electron");
 const path = require("path");
 const os = require("os");
 const { spawn } = require("child_process");
 const { autoUpdater } = require("electron-updater");
 
 let mainWindow = null;
+let tray = null;
 let backendProcess = null;
 let livekitProcess = null;
 let pendingScreenShareSourceId = null;
+// Fechar a janela (X) só esconde ela na bandeja — isQuitting é o que
+// diferencia isso de um "Sair" de verdade (menu da bandeja). Sem essa
+// flag, não teria como saber se o "close" veio de alguém clicando no X
+// (deve só esconder) ou de alguém realmente saindo do app.
+let isQuitting = false;
 
 const isDev = !app.isPackaged;
 
@@ -54,11 +60,54 @@ function createWindow() {
     mainWindow = null;
   });
 
+  // Clicar no X não fecha o app de verdade — só esconde a janela pra
+  // bandeja (o app continua rodando, a call/conexão continua de pé).
+  // "Sair" de verdade só acontece pelo menu da bandeja (ou pelo próprio
+  // sistema encerrando o processo). Sem isso, fechar a janela sem querer
+  // derrubava a call e, se estivesse hospedando, tirava todo mundo.
+  mainWindow.on("close", (event) => {
+    if (isQuitting) return;
+    event.preventDefault();
+    mainWindow.hide();
+  });
+
   if (isDev) {
     mainWindow.loadURL("http://localhost:5173");
   } else {
     mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
   }
+}
+
+function showWindow() {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function createTray() {
+  const iconPath = path.join(__dirname, "..", "build-icons", "icon.png");
+  tray = new Tray(nativeImage.createFromPath(iconPath));
+  tray.setToolTip("Murmity");
+
+  const contextMenu = Menu.buildFromTemplate([
+    { label: "Abrir Murmity", click: showWindow },
+    { type: "separator" },
+    {
+      label: "Sair",
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+
+  // Clique esquerdo abre direto (comportamento padrão do Windows pra
+  // bandeja); clique direito mostra o menu com "Sair" — não associamos
+  // o menu ao clique esquerdo de propósito, senão ele também abriria o
+  // menu em vez de só restaurar a janela.
+  tray.on("click", showWindow);
+  tray.on("right-click", () => tray.popUpContextMenu(contextMenu));
 }
 
 function stopAllSidecars() {
@@ -181,10 +230,7 @@ ipcMain.handle("stop-livekit", () => {
 });
 
 ipcMain.handle("focus-window", () => {
-  if (!mainWindow) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
+  showWindow();
 });
 
 // --- IPC: atualização (chamado pelo botão "Nova versão" no React) ---
@@ -197,6 +243,7 @@ ipcMain.handle("install-update", () => {
 
 app.whenReady().then(() => {
   createWindow();
+  createTray();
 
   // Diferente do Tauri (WebView2), o Chromium embutido no Electron não
   // sabe compartilhar tela sozinho — precisa registrar esse handler.

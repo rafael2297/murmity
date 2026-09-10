@@ -32,7 +32,13 @@ db.exec(`
 // já existentes, criados antes dessa feature. SQLite não tem "ADD COLUMN
 // IF NOT EXISTS" — tenta adicionar e ignora o erro se a coluna já existir
 // (banco criado numa versão mais nova, já com elas desde o início).
-for (const columnDef of ["attachment_url TEXT", "attachment_type TEXT", "attachment_name TEXT"]) {
+for (const columnDef of [
+  "attachment_url TEXT",
+  "attachment_type TEXT",
+  "attachment_name TEXT",
+  "edited_at INTEGER",
+  "reply_to_id TEXT",
+]) {
   try {
     db.exec(`ALTER TABLE messages ADD COLUMN ${columnDef}`);
   } catch {

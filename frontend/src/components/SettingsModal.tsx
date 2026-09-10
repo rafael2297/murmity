@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMediaDeviceSelect } from "@livekit/components-react";
 import { X, User, SlidersHorizontal, Music4, Smile, LogOut } from "lucide-react";
 import SoundboardManager from "./SoundboardManager";
+import SoundboardVolumeControl from "./SoundboardVolumeControl";
 import EmojiManager from "./EmojiManager";
 
 interface Props {
@@ -135,7 +136,14 @@ export default function SettingsModal({
               ))}
 
             {activeTab === "soundboard" && (
-              <SoundboardManager backendUrl={backendUrl} authToken={authToken} username={username} />
+              <>
+                <div className="soundboard-volume-label">
+                  Volume dos sons do soundboard (seus e de outras pessoas na call)
+                </div>
+                <SoundboardVolumeControl />
+                <hr className="settings-divider" />
+                <SoundboardManager backendUrl={backendUrl} authToken={authToken} username={username} />
+              </>
             )}
 
             {activeTab === "emojis" && (
