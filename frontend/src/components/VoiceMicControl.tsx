@@ -1,5 +1,6 @@
 import { useLocalParticipant } from "@livekit/components-react";
 import { Mic, MicOff } from "lucide-react";
+import { isDeafened, setDeafened } from "../localAudioPrefs";
 
 /**
  * Controle de mic isolado, pra viver na barra do usuário (sidebar-bottom)
@@ -14,7 +15,15 @@ export default function VoiceMicControl() {
   const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
 
   async function toggleMic() {
-    await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+    const enabling = !isMicrophoneEnabled;
+    // Ligar o mic manualmente enquanto ensurdecido também te desensurdece
+    // — senão você estaria falando sem conseguir ouvir ninguém responder,
+    // que não é o que a pessoa quer ao clicar aqui (mesmo comportamento
+    // do Discord).
+    if (enabling && isDeafened()) {
+      setDeafened(false);
+    }
+    await localParticipant.setMicrophoneEnabled(enabling);
   }
 
   return (

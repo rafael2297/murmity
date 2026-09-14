@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore, useRef } from "react";
 import { useParticipants, useRoomContext, useTracks } from "@livekit/components-react";
 import { RoomEvent, Participant, Track, RemoteAudioTrack, LocalParticipant } from "livekit-client";
 import { MicOff } from "lucide-react";
-import { getVolume, setVolume, toggleMute, subscribe } from "../localAudioPrefs";
+import { getVolume, getEffectiveVolume, setVolume, toggleMute, subscribe } from "../localAudioPrefs";
 
 interface RowProps {
   participant: Participant;
@@ -17,10 +17,13 @@ function ParticipantRow({ participant, speaking, micTrack, onContextMenu }: RowP
 
   const volume = useSyncExternalStore(subscribe, () => getVolume(identity));
   const muted = volume === 0;
+  // O que realmente toca na track leva em conta o ensurdecer global também
+  // (não só o mute/volume individual) — por isso um snapshot separado.
+  const effectiveVolume = useSyncExternalStore(subscribe, () => getEffectiveVolume(identity));
 
   useEffect(() => {
-    if (micTrack instanceof RemoteAudioTrack) micTrack.setVolume(volume);
-  }, [micTrack, volume]);
+    if (micTrack instanceof RemoteAudioTrack) micTrack.setVolume(effectiveVolume);
+  }, [micTrack, effectiveVolume]);
 
   return (
     <div

@@ -3,7 +3,13 @@ import { ParticipantTile, useTracks } from "@livekit/components-react";
 import type { TrackReferenceOrPlaceholder } from "@livekit/components-react";
 import { RemoteAudioTrack, Track } from "livekit-client";
 import { Minimize2, Users, EyeOff, MicOff, Volume2, VolumeX } from "lucide-react";
-import { getVolume, isScreenAudioMuted, toggleScreenAudioMute, subscribe } from "../localAudioPrefs";
+import {
+  getVolume,
+  isScreenAudioMuted,
+  toggleScreenAudioMute,
+  isDeafened,
+  subscribe,
+} from "../localAudioPrefs";
 
 function trackKey(t: TrackReferenceOrPlaceholder): string {
   return `${t.participant.identity}-${t.source}`;
@@ -59,12 +65,16 @@ function ScreenShareAudioController({
   audioTrack: Track | undefined;
 }) {
   const muted = useSyncExternalStore(subscribe, () => isScreenAudioMuted(identity));
+  // Ensurdecer silencia TUDO que vem de fora, incluindo o áudio da tela
+  // compartilhada — sem mexer na preferência de mute daquela tela, que
+  // volta a valer sozinha assim que a pessoa desensurdecer.
+  const deafened = useSyncExternalStore(subscribe, () => isDeafened());
 
   useEffect(() => {
     if (audioTrack instanceof RemoteAudioTrack) {
-      audioTrack.setVolume(muted ? 0 : 1);
+      audioTrack.setVolume(muted || deafened ? 0 : 1);
     }
-  }, [audioTrack, muted]);
+  }, [audioTrack, muted, deafened]);
 
   return null;
 }

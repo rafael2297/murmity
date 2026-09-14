@@ -10,6 +10,7 @@ import MemberSidebar from "./MemberSidebar";
 import { playJoinSound, playLeaveSound } from "../soundEffects";
 import { ensureNotificationPermission } from "../notifications";
 import { ChatConnectionProvider } from "../ChatConnectionContext";
+import { setDeafened } from "../localAudioPrefs";
 
 // Canal de voz único (ver seção 11 do PROJECT_CONTEXT.md).
 const VOICE_ROOM_NAME = "geral";
@@ -69,6 +70,9 @@ export default function Workspace({ backendUrl, authToken, username, onLogout }:
     });
     setMainView("chat");
     if (errorMessage) setVoiceError(errorMessage);
+    // Ensurdecer é um estado "desta call" — sair não pode deixar a próxima
+    // já entrando surda sem o usuário ter feito nada.
+    setDeafened(false);
   }
 
   const layout = (

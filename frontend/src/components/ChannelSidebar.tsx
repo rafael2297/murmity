@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Hash, Volume2, Settings } from "lucide-react";
 import VoiceUserBar from "./VoiceUserBar";
 import VoiceMicControl from "./VoiceMicControl";
+import VoiceDeafenControl from "./VoiceDeafenControl";
 import VoiceParticipants from "./VoiceParticipants";
 import VoiceChannelPreview from "./VoiceChannelPreview";
 import SettingsModal from "./SettingsModal";
@@ -84,6 +85,7 @@ export default function ChannelSidebar({
         </div>
         <div className="sidebar-bottom-actions">
           {inCall && <VoiceMicControl />}
+          {inCall && <VoiceDeafenControl />}
           <button className="icon-btn" title="Configurações" onClick={() => setShowSettings(true)}>
             <Settings size={16} />
           </button>
