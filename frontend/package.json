@@ -1,7 +1,7 @@
 {
   "name": "murmity-frontend",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "main": "electron/main.cjs",
   "repository": {
@@ -15,8 +15,7 @@
     "preview": "vite preview",
     "electron:dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build && electron-builder --publish never",
-    "electron:deploy": "node ../scripts/release.cjs",
-    "electron:release": "npm run build && electron-builder --publish always"
+    "electron:deploy": "node ../scripts/release.cjs"
   },
   "dependencies": {
     "@livekit/components-react": "^2.6.0",
