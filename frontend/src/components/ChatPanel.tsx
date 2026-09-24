@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { Smile, Paperclip, Image as ImageIcon, X, ArrowDown, Pencil, Trash2, CornerUpLeft } from "lucide-react";
+import { Smile, SmilePlus, Paperclip, Image as ImageIcon, X, ArrowDown, Pencil, Trash2, CornerUpLeft } from "lucide-react";
 import { useChatConnection, ChatAttachment } from "../ChatConnectionContext";
-import { fetchEmojis, uploadAttachment, fetchLinkPreview, CustomEmoji, LinkPreview } from "../api";
-import { renderMessageContent, buildEmojiUrlMap } from "../emojiText";
-import { extractFirstYoutubeUrl } from "../youtube";
+import { uploadAttachment, fetchLinkPreview, CustomEmoji, LinkPreview } from "../api";
+import { renderMessageContent, renderMessageText, buildEmojiUrlMap } from "../emojiText";
+import { extractFirstUrl } from "../links";
+import { useConfirm } from "../ConfirmContext";
 import EmojiPicker from "./EmojiPicker";
 import GifPicker from "./GifPicker";
 import YoutubeEmbed from "./YoutubeEmbed";
+import LinkPreviewCard from "./LinkPreviewCard";
 
 interface Props {
   username: string;
@@ -23,7 +25,10 @@ function formatTime(timestamp: number) {
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
 
 export default function ChatPanel({ username, backendUrl, authToken }: Props) {
-  const { messages, connected, sendMessage, editMessage, deleteMessage } = useChatConnection();
+  const { messages, connected, sendMessage, editMessage, deleteMessage, toggleReaction, channels, currentTextChannelId, customEmojis } =
+    useChatConnection();
+  const currentChannelName = channels.find((c) => c.id === currentTextChannelId)?.name ?? "";
+  const { confirm } = useConfirm();
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -32,8 +37,11 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
   );
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  // Guarda o ID da mensagem, não um booleano — é o que faz o seletor
+  // "saber" em qual mensagem aplicar a reação escolhida (reusa o mesmo
+  // EmojiPicker do composer, só muda pra quem o resultado vai).
+  const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
-  const [customEmojis, setCustomEmojis] = useState<CustomEmoji[]>([]);
   const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -85,37 +93,22 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
     setShowJumpToBottom(false);
   }
 
-  // Carrega os emojis personalizados uma vez, pra saber traduzir ":codigo:"
-  // em imagem nas mensagens já recebidas. Se alguém adicionar um emoji
-  // novo enquanto o chat já está aberto, só aparece depois de reabrir o
-  // chat/app — aceitável por enquanto, não há um evento em tempo real
-  // avisando sobre emojis novos.
-  useEffect(() => {
-    let cancelled = false;
-    fetchEmojis(backendUrl, authToken)
-      .then((list) => {
-        if (!cancelled) setCustomEmojis(list);
-      })
-      .catch(() => {
-        // Sem emoji personalizado carregado, as mensagens só não mostram
-        // a imagem (o ":codigo:" some/vira imagem quebrada) — não trava
-        // o chat por causa disso.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [backendUrl, authToken]);
+  // Emoji personalizado agora vem do ChatConnectionContext (compartilhado
+  // com o resto do app, atualizado ao vivo — ver comentário lá) em vez de
+  // cada componente buscar sua própria cópia.
 
-  // Sempre que uma mensagem nova tem um link de YouTube, busca o preview
-  // dele (uma vez só por URL, mesmo que apareça em várias mensagens).
+  // Sempre que uma mensagem nova tem um link, busca o preview dele (uma
+  // vez só por URL, mesmo que apareça em várias mensagens). O backend
+  // decide sozinho se é YouTube ou Open Graph genérico — aqui só importa
+  // "tem link? busca." (ver fetchLinkPreview em api.ts).
   useEffect(() => {
     for (const m of messages) {
-      const youtubeUrl = extractFirstYoutubeUrl(m.text);
-      if (!youtubeUrl || fetchedUrlsRef.current.has(youtubeUrl)) continue;
-      fetchedUrlsRef.current.add(youtubeUrl);
-      fetchLinkPreview(backendUrl, authToken, youtubeUrl).then((preview) => {
+      const url = m.text ? extractFirstUrl(m.text) : null;
+      if (!url || fetchedUrlsRef.current.has(url)) continue;
+      fetchedUrlsRef.current.add(url);
+      fetchLinkPreview(backendUrl, authToken, url).then((preview) => {
         if (!preview) return; // sem preview disponível — o link continua clicável normal
-        setLinkPreviews((prev) => new Map(prev).set(youtubeUrl, preview));
+        setLinkPreviews((prev) => new Map(prev).set(url, preview));
       });
     }
   }, [messages, backendUrl, authToken]);
@@ -166,8 +159,13 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
     }
   }
 
-  function handleDeleteMessage(id: string) {
-    const confirmed = window.confirm("Apagar essa mensagem? Não tem como desfazer.");
+  async function handleDeleteMessage(id: string) {
+    const confirmed = await confirm({
+      title: "Apagar mensagem",
+      message: "Apagar essa mensagem? Não tem como desfazer.",
+      confirmLabel: "Apagar",
+      danger: true,
+    });
     if (!confirmed) return;
     deleteMessage(id);
   }
@@ -215,7 +213,6 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
 
   function handleSelectCustom(emoji: CustomEmoji) {
     insertAtCursor(`:${emoji.code}:`);
-    setCustomEmojis((prev) => (prev.some((e) => e.id === emoji.id) ? prev : [...prev, emoji]));
   }
 
   function handleSelectGif(gif: { url: string; width: number; height: number }) {
@@ -224,6 +221,27 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
     setGifPickerOpen(false);
     sendMessage("", { url: gif.url, type: "gif" }, replyingTo?.id);
     setReplyingTo(null);
+  }
+
+  function openReactionPicker(messageId: string) {
+    setEmojiPickerOpen(false); // só um seletor de emoji aberto por vez
+    setReactionPickerFor(messageId);
+  }
+
+  function closeReactionPicker() {
+    setReactionPickerFor(null);
+  }
+
+  function handleReactionSelectNative(emoji: string) {
+    if (reactionPickerFor) toggleReaction(reactionPickerFor, emoji);
+    closeReactionPicker();
+  }
+
+  function handleReactionSelectCustom(emoji: CustomEmoji) {
+    // Mesmo formato ":codigo:" usado no texto da mensagem — é o que deixa
+    // renderMessageText desenhar a reação como imagem, não como texto cru.
+    if (reactionPickerFor) toggleReaction(reactionPickerFor, `:${emoji.code}:`);
+    closeReactionPicker();
   }
 
   async function uploadPickedFile(file: File) {
@@ -278,8 +296,8 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
             !m.attachmentUrl &&
             !m.replyToId; // resposta sempre quebra o agrupamento, pra deixar o contexto claro
 
-          const youtubeUrl = m.text ? extractFirstYoutubeUrl(m.text) : null;
-          const youtubePreview = youtubeUrl ? linkPreviews.get(youtubeUrl) : undefined;
+          const previewUrl = m.text ? extractFirstUrl(m.text) : null;
+          const preview = previewUrl ? linkPreviews.get(previewUrl) : undefined;
           const repliedMessage = m.replyToId ? messages.find((msg) => msg.id === m.replyToId) : undefined;
 
           return (
@@ -362,9 +380,10 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
                   )
                 )}
 
-                {youtubeUrl && youtubePreview && (
-                  <YoutubeEmbed preview={youtubePreview} sourceUrl={youtubeUrl} />
+                {preview?.type === "youtube" && previewUrl && (
+                  <YoutubeEmbed preview={preview} sourceUrl={previewUrl} />
                 )}
+                {preview?.type === "generic" && <LinkPreviewCard preview={preview} />}
                 {m.attachmentUrl && m.attachmentType === "audio" ? (
                   <audio
                     className="chat-attachment-audio"
@@ -385,10 +404,36 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
                     />
                   </a>
                 ) : null}
+
+                {m.reactions && m.reactions.length > 0 && (
+                  <div className="chat-reactions">
+                    {m.reactions.map((r) => {
+                      const mine = r.usernames.includes(username);
+                      return (
+                        <button
+                          key={r.emoji}
+                          className={`chat-reaction-badge ${mine ? "own" : ""}`}
+                          onClick={() => toggleReaction(m.id, r.emoji)}
+                          title={r.usernames.join(", ")}
+                        >
+                          {renderMessageText(r.emoji, emojiByCode, `${m.id}-react-`)}
+                          <span className="chat-reaction-count">{r.usernames.length}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {editingId !== m.id && (
                 <div className="chat-message-actions">
+                  <button
+                    className="icon-btn small"
+                    onClick={() => openReactionPicker(m.id)}
+                    title="Reagir"
+                  >
+                    <SmilePlus size={13} />
+                  </button>
                   <button
                     className="icon-btn small"
                     onClick={() => startReply({ id: m.id, username: m.username, text: m.text })}
@@ -489,7 +534,7 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={connected ? "Mensagem para #geral" : "Reconectando ao chat..."}
+          placeholder={connected ? `Mensagem para #${currentChannelName}` : "Reconectando ao chat..."}
           rows={1}
         />
         <button
@@ -500,7 +545,7 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
           <ImageIcon size={18} />
           <span>GIF</span>
         </button>
-        <button className="icon-btn chat-emoji-btn" onClick={() => setEmojiPickerOpen(true)} title="Emojis">
+        <button className="icon-btn chat-emoji-btn" onClick={() => { setReactionPickerFor(null); setEmojiPickerOpen(true); }} title="Emojis">
           <Smile size={20} />
         </button>
         <button onClick={send} disabled={(!draft.trim() && !pendingAttachment) || !connected || uploading}>
@@ -511,10 +556,18 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
       {emojiPickerOpen && (
         <EmojiPicker
           backendUrl={backendUrl}
-          authToken={authToken}
           onClose={() => setEmojiPickerOpen(false)}
           onSelectNative={handleSelectNative}
           onSelectCustom={handleSelectCustom}
+        />
+      )}
+
+      {reactionPickerFor && (
+        <EmojiPicker
+          backendUrl={backendUrl}
+          onClose={closeReactionPicker}
+          onSelectNative={handleReactionSelectNative}
+          onSelectCustom={handleReactionSelectCustom}
         />
       )}
 

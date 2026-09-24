@@ -3,32 +3,37 @@ import { useLocalParticipant, useRoomContext } from "@livekit/components-react";
 import { Video, VideoOff, ScreenShare, ScreenShareOff, PhoneOff, Music4 } from "lucide-react";
 import { isEnvElectron } from "../host";
 import ScreenSharePicker from "./ScreenSharePicker";
+import ScreenShareQualityPicker, { ScreenShareQuality } from "./ScreenShareQualityPicker";
 import SoundboardPanel from "./SoundboardPanel";
 
 interface Props {
   backendUrl: string;
   authToken: string;
+  channelName: string;
 }
 
-export default function VoiceUserBar({ backendUrl, authToken }: Props) {
+export default function VoiceUserBar({ backendUrl, authToken, channelName }: Props) {
   const room = useRoomContext();
   const { localParticipant, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [qualityPickerOpen, setQualityPickerOpen] = useState(false);
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const pickerResolveRef = useRef<((sourceId: string | null) => void) | null>(null);
+  const qualityResolveRef = useRef<((quality: ScreenShareQuality | null) => void) | null>(null);
 
   async function toggleCam() {
     await localParticipant.setCameraEnabled(!isCameraEnabled);
   }
 
-  async function startScreenShare() {
+  async function startScreenShare(quality: ScreenShareQuality) {
     await localParticipant.setScreenShareEnabled(
       true,
       {
-        // Mesmos ajustes validados na Etapa 1: fps alto + contentHint
-        // "motion" evitam a sensação de lag em conteúdo com movimento
-        // rápido (jogos).
-        resolution: { width: 1920, height: 1080, frameRate: 30 },
+        // contentHint "motion" evita a sensação de lag em conteúdo com
+        // movimento rápido (jogos, vídeo) — resolução/fps agora vêm da
+        // escolha da pessoa no ScreenShareQualityPicker, não são mais
+        // fixos no código.
+        resolution: { width: quality.width, height: quality.height, frameRate: quality.frameRate },
         contentHint: "motion",
         // Pede áudio do sistema/janela junto com a tela (equivalente ao
         // "compartilhar áudio" do Discord). No Electron, quem decide de
@@ -38,7 +43,7 @@ export default function VoiceUserBar({ backendUrl, authToken }: Props) {
         systemAudio: "include",
       },
       {
-        videoEncoding: { maxBitrate: 4_000_000, maxFramerate: 30 },
+        videoEncoding: { maxBitrate: quality.maxBitrate, maxFramerate: quality.frameRate },
         simulcast: false,
       }
     );
@@ -63,7 +68,16 @@ export default function VoiceUserBar({ backendUrl, authToken }: Props) {
         await (window as any).electronAPI.setScreenShareSource(sourceId);
       }
 
-      await startScreenShare();
+      // Passo de qualidade — igual ao Discord, escolhe resolução/fps antes
+      // de "ir ao vivo". No navegador, isso acontece ANTES do seletor
+      // nativo do SO (que abre só quando setScreenShareEnabled é chamado).
+      const quality = await new Promise<ScreenShareQuality | null>((resolve) => {
+        qualityResolveRef.current = resolve;
+        setQualityPickerOpen(true);
+      });
+      if (!quality) return; // cancelou na tela de qualidade
+
+      await startScreenShare(quality);
     } catch (err) {
       console.warn("Usuário cancelou ou erro ao compartilhar tela:", err);
     }
@@ -73,6 +87,18 @@ export default function VoiceUserBar({ backendUrl, authToken }: Props) {
     setPickerOpen(false);
     pickerResolveRef.current?.(sourceId);
     pickerResolveRef.current = null;
+  }
+
+  function handleQualityConfirm(quality: ScreenShareQuality) {
+    setQualityPickerOpen(false);
+    qualityResolveRef.current?.(quality);
+    qualityResolveRef.current = null;
+  }
+
+  function handleQualityCancel() {
+    setQualityPickerOpen(false);
+    qualityResolveRef.current?.(null);
+    qualityResolveRef.current = null;
   }
 
   function leave() {
@@ -86,7 +112,7 @@ export default function VoiceUserBar({ backendUrl, authToken }: Props) {
           <span className="voice-connected-dot" />
           <div>
             <div className="voice-status-title">Voz conectada</div>
-            <div className="voice-status-sub"># geral</div>
+            <div className="voice-status-sub"># {channelName}</div>
           </div>
         </div>
         <button className="icon-btn danger" onClick={leave} title="Desconectar">
@@ -115,6 +141,9 @@ export default function VoiceUserBar({ backendUrl, authToken }: Props) {
       </div>
 
       {pickerOpen && <ScreenSharePicker onPick={handlePick} />}
+      {qualityPickerOpen && (
+        <ScreenShareQualityPicker onConfirm={handleQualityConfirm} onCancel={handleQualityCancel} />
+      )}
       {soundboardOpen && (
         <SoundboardPanel
           onClose={() => setSoundboardOpen(false)}

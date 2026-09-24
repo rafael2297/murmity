@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { fetchEmojis, CustomEmoji } from "../api";
+import { CustomEmoji } from "../api";
+import { useChatConnection } from "../ChatConnectionContext";
 
 interface Props {
   backendUrl: string;
-  authToken: string;
   onClose: () => void;
   onSelectNative: (emoji: string) => void;
   onSelectCustom: (emoji: CustomEmoji) => void;
@@ -30,27 +29,14 @@ const NATIVE_EMOJIS = [
  */
 export default function EmojiPicker({
   backendUrl,
-  authToken,
   onClose,
   onSelectNative,
   onSelectCustom,
 }: Props) {
-  const [customEmojis, setCustomEmojis] = useState<CustomEmoji[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchEmojis(backendUrl, authToken)
-      .then((list) => {
-        if (!cancelled) setCustomEmojis(list);
-      })
-      .catch(() => {
-        // Se falhar, só não mostra a seção de personalizados — não vale
-        // travar o resto do seletor por causa disso.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [backendUrl, authToken]);
+  // Vem do ChatConnectionContext (compartilhado, atualizado ao vivo) em
+  // vez de buscar aqui — assim um emoji adicionado agora mesmo já aparece
+  // sem precisar reabrir o seletor.
+  const { customEmojis } = useChatConnection();
 
   return (
     <div className="emoji-picker-backdrop" onClick={onClose}>

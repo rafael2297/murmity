@@ -1,10 +1,11 @@
-import { useEffect, useState, FormEvent } from "react";
+import { useState, FormEvent } from "react";
 import { Trash2, Plus } from "lucide-react";
-import { fetchEmojis, uploadEmoji, deleteEmoji, CustomEmoji } from "../api";
+import { CustomEmoji } from "../api";
+import { useConfirm } from "../ConfirmContext";
+import { useChatConnection } from "../ChatConnectionContext";
 
 interface Props {
   backendUrl: string;
-  authToken: string;
   username: string;
 }
 
@@ -12,41 +13,34 @@ interface Props {
  * Gerenciar emojis personalizados (adicionar/remover) fica nas
  * Configurações — mesma lógica do soundboard: gerenciar é uma coisa,
  * usar (o EmojiPicker, no chat) é outra.
+ *
+ * A lista em si (`customEmojis`) vem do ChatConnectionContext —
+ * compartilhada com o resto do app e atualizada ao vivo por WebSocket
+ * (emoji_created/emoji_deleted), então nem precisa buscar nem mexer no
+ * estado local depois de adicionar/remover: a atualização chega sozinha
+ * pelo mesmo canal que os outros usuários também recebem.
  */
-export default function EmojiManager({ backendUrl, authToken, username }: Props) {
-  const [emojis, setEmojis] = useState<CustomEmoji[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default function EmojiManager({ backendUrl, username }: Props) {
+  const { confirm, notifyError } = useConfirm();
+  const { customEmojis, uploadEmoji, deleteEmoji } = useChatConnection();
 
   const [newCode, setNewCode] = useState("");
   const [newFile, setNewFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchEmojis(backendUrl, authToken)
-      .then((list) => {
-        if (!cancelled) setEmojis(list);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Erro ao carregar emojis");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [backendUrl, authToken]);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleDelete(emoji: CustomEmoji) {
-    const confirmed = window.confirm(`Remover o emoji :${emoji.code}:?`);
+    const confirmed = await confirm({
+      title: "Remover emoji",
+      message: `Remover o emoji :${emoji.code}:?`,
+      confirmLabel: "Remover",
+      danger: true,
+    });
     if (!confirmed) return;
     try {
-      await deleteEmoji(backendUrl, authToken, emoji.id);
-      setEmojis((prev) => prev.filter((e) => e.id !== emoji.id));
+      await deleteEmoji(emoji.id);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Erro ao remover emoji");
+      notifyError(err instanceof Error ? err.message : "Erro ao remover emoji");
     }
   }
 
@@ -56,8 +50,7 @@ export default function EmojiManager({ backendUrl, authToken, username }: Props)
     setUploading(true);
     setError(null);
     try {
-      const emoji = await uploadEmoji(backendUrl, authToken, newCode.trim(), newFile);
-      setEmojis((prev) => [...prev, emoji]);
+      await uploadEmoji(newCode.trim(), newFile);
       setNewCode("");
       setNewFile(null);
     } catch (err) {
@@ -69,13 +62,11 @@ export default function EmojiManager({ backendUrl, authToken, username }: Props)
 
   return (
     <>
-      {loading ? (
-        <p className="device-select-empty">Carregando emojis...</p>
-      ) : emojis.length === 0 ? (
+      {customEmojis.length === 0 ? (
         <p className="device-select-empty">Nenhum emoji personalizado ainda — adicione um abaixo.</p>
       ) : (
         <ul className="soundboard-manage-list">
-          {emojis.map((emoji) => (
+          {customEmojis.map((emoji) => (
             <li key={emoji.id} className="soundboard-manage-item emoji-manage-item">
               <img
                 className="emoji-manage-preview"

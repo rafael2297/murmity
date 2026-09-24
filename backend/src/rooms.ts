@@ -53,6 +53,11 @@ router.post("/:roomName/join-token", requireAuth, async (req: AuthedRequest, res
     canPublish: true,
     canSubscribe: true,
     canPublishData: true,
+    // Necessário pro participante conseguir usar localParticipant.setAttributes
+    // no cliente (usado pelo ensurdecer, pra publicar esse estado pros outros
+    // verem o ícone ao lado do nome). Sem isso o LiveKit rejeita a chamada
+    // com NOT_ALLOWED.
+    canUpdateOwnMetadata: true,
   });
 
   const token = await at.toJwt();

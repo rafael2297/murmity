@@ -14,6 +14,9 @@ let pendingScreenShareSourceId = null;
 // flag, não teria como saber se o "close" veio de alguém clicando no X
 // (deve só esconder) ou de alguém realmente saindo do app.
 let isQuitting = false;
+// Evita empilhar vários pedidos se a pessoa clicar no X várias vezes
+// seguidas enquanto o modal já está aberto no React esperando resposta.
+let waitingForCloseChoice = false;
 
 const isDev = !app.isPackaged;
 
@@ -60,15 +63,20 @@ function createWindow() {
     mainWindow = null;
   });
 
-  // Clicar no X não fecha o app de verdade — só esconde a janela pra
-  // bandeja (o app continua rodando, a call/conexão continua de pé).
-  // "Sair" de verdade só acontece pelo menu da bandeja (ou pelo próprio
-  // sistema encerrando o processo). Sem isso, fechar a janela sem querer
-  // derrubava a call e, se estivesse hospedando, tirava todo mundo.
+  // Clicar no X pergunta o que fazer: minimizar pra bandeja (app continua
+  // rodando, call/conexão seguem de pé) ou fechar de verdade. A pergunta em
+  // si é um modal do próprio React (ver CloseConfirmModal.tsx) — não a
+  // caixinha nativa do sistema, que destoa do resto do app — por isso só
+  // avisamos o renderer aqui e esperamos a resposta vir pelo IPC abaixo.
+  // "Sair" pelo menu da bandeja continua indo direto (isQuitting), sem
+  // perguntar de novo.
   mainWindow.on("close", (event) => {
     if (isQuitting) return;
     event.preventDefault();
-    mainWindow.hide();
+    if (waitingForCloseChoice) return;
+
+    waitingForCloseChoice = true;
+    sendToRenderer("request-close-choice", null);
   });
 
   if (isDev) {
@@ -231,6 +239,20 @@ ipcMain.handle("stop-livekit", () => {
 
 ipcMain.handle("focus-window", () => {
   showWindow();
+});
+
+// Resposta do modal do React (ver CloseConfirmModal.tsx) ao pedido de
+// "request-close-choice" acima.
+ipcMain.on("close-choice-response", (_event, choice) => {
+  waitingForCloseChoice = false;
+  if (choice === "minimize") {
+    mainWindow?.hide();
+  } else if (choice === "quit") {
+    isQuitting = true;
+    app.quit();
+  }
+  // choice === "cancel" (ou qualquer outra coisa) — não faz nada, janela
+  // continua aberta.
 });
 
 // --- IPC: atualização (chamado pelo botão "Nova versão" no React) ---

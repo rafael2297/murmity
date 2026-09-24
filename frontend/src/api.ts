@@ -14,6 +14,14 @@ export interface JoinTokenResult {
   room: string;
 }
 
+export interface Channel {
+  id: string;
+  name: string;
+  type: "text" | "voice";
+  position: number;
+  createdAt: number;
+}
+
 export interface VoiceParticipant {
   identity: string;
 }
@@ -48,13 +56,22 @@ export interface UploadedAttachment {
   name: string;
 }
 
-export interface LinkPreview {
-  type: "youtube";
-  videoId: string;
-  title: string;
-  authorName: string;
-  thumbnailUrl: string;
-}
+export type LinkPreview =
+  | {
+      type: "youtube";
+      videoId: string;
+      title: string;
+      authorName: string;
+      thumbnailUrl: string;
+    }
+  | {
+      type: "generic";
+      url: string;
+      title: string;
+      description: string;
+      imageUrl: string | null;
+      siteName: string;
+    };
 
 export async function fetchVoiceParticipants(
   backendUrl: string,
@@ -103,6 +120,49 @@ export async function fetchJoinToken(
     headers: { Authorization: `Bearer ${authToken}` },
   });
   return parseJsonOrThrow(res);
+}
+
+/** Lista todos os canais (texto e voz), na ordem de exibição. */
+export async function fetchChannels(backendUrl: string, authToken: string): Promise<Channel[]> {
+  const res = await fetch(`${backendUrl}/channels`, {
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  const data = await parseJsonOrThrow(res);
+  return data.channels;
+}
+
+/**
+ * Cria um canal novo (texto ou voz). Qualquer pessoa pode criar — sem
+ * cargo/permissão, igual ao resto do app. A lista de canais de todo
+ * mundo é atualizada via WebSocket (evento "channel_created"), não pelo
+ * retorno desta função.
+ */
+export async function createChannel(
+  backendUrl: string,
+  authToken: string,
+  name: string,
+  type: "text" | "voice"
+): Promise<Channel> {
+  const res = await fetch(`${backendUrl}/channels`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name, type }),
+  });
+  const data = await parseJsonOrThrow(res);
+  return data.channel;
+}
+
+/**
+ * Apaga um canal. O servidor recusa (erro 400) se for o último canal
+ * daquele tipo — precisa sempre sobrar pelo menos um de texto e um de
+ * voz.
+ */
+export async function deleteChannel(backendUrl: string, authToken: string, id: string): Promise<void> {
+  const res = await fetch(`${backendUrl}/channels/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  await parseJsonOrThrow(res);
 }
 
 /** Lista os sons do soundboard disponíveis (compartilhados entre todos). */
@@ -235,10 +295,11 @@ export async function uploadAttachment(
 }
 
 /**
- * Busca o preview de um link (hoje só funciona pra YouTube). Retorna
- * `null` em vez de lançar erro quando não tem preview disponível pra
- * esse link — nesses casos o link continua funcionando normal, só sem
- * card, então não faz sentido tratar isso como uma falha de verdade.
+ * Busca o preview de um link (YouTube via oEmbed, qualquer outro site via
+ * Open Graph — ver backend/src/linkpreview.ts). Retorna `null` em vez de
+ * lançar erro quando não tem preview disponível pra esse link — nesses
+ * casos o link continua funcionando normal, só sem card, então não faz
+ * sentido tratar isso como uma falha de verdade.
  */
 export async function fetchLinkPreview(
   backendUrl: string,

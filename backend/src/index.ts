@@ -5,6 +5,7 @@ import { WebSocketServer } from "ws";
 import "dotenv/config";
 import identifyRouter from "./identify";
 import roomsRouter from "./rooms";
+import channelsRouter from "./channels";
 import soundsRouter, { SOUNDS_DIR } from "./sounds";
 import emojisRouter, { EMOJIS_DIR } from "./emojis";
 import attachmentsRouter, { ATTACHMENTS_DIR } from "./attachments";
@@ -21,6 +22,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/auth", identifyRouter);
 app.use("/rooms", roomsRouter);
+app.use("/channels", channelsRouter);
 // Arquivos de áudio do soundboard, imagens de emoji e anexos de chat
 // (imagem/áudio), servidos como estáticos (o upload em si é tratado nos
 // routers, com corpo bruto em vez de multipart). Busca de GIF não passa

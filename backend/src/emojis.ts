@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { db } from "./db";
 import { getDataDir } from "./paths";
 import { requireAuth, AuthedRequest } from "./middleware";
+import { broadcastChatEvent } from "./chat";
 
 const router = Router();
 
@@ -117,7 +118,12 @@ router.post(
     };
     insertStmt.run(row.id, row.code, row.filename, row.added_by, row.created_at);
 
-    res.status(201).json({ emoji: toPublic(row) });
+    const emoji = toPublic(row);
+    // Todo mundo com o chat aberto precisa saber do emoji novo na hora —
+    // sem isso, só aparece pra quem reabrir o app (ver ChatConnectionContext).
+    broadcastChatEvent(JSON.stringify({ type: "emoji_created", emoji }));
+
+    res.status(201).json({ emoji });
   }
 );
 
@@ -138,6 +144,8 @@ router.delete("/:id", requireAuth, (req: AuthedRequest, res) => {
 
   deleteStmt.run(row.id);
   fs.rm(path.join(EMOJIS_DIR, row.filename), { force: true }, () => {});
+
+  broadcastChatEvent(JSON.stringify({ type: "emoji_deleted", id: row.id }));
 
   res.json({ ok: true });
 });

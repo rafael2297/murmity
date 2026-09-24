@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore, useRef } from "react";
 import { useParticipants, useRoomContext, useTracks } from "@livekit/components-react";
 import { RoomEvent, Participant, Track, RemoteAudioTrack, LocalParticipant } from "livekit-client";
-import { MicOff } from "lucide-react";
+import { MicOff, HeadphoneOff } from "lucide-react";
 import { getVolume, getEffectiveVolume, setVolume, toggleMute, subscribe } from "../localAudioPrefs";
 
 interface RowProps {
@@ -16,7 +16,7 @@ function ParticipantRow({ participant, speaking, micTrack, onContextMenu }: RowP
   const isLocal = participant instanceof LocalParticipant;
 
   const volume = useSyncExternalStore(subscribe, () => getVolume(identity));
-  const muted = volume === 0;
+  const localMute = volume === 0; // "eu mutei essa pessoa" — só afeta o que EU escuto
   // O que realmente toca na track leva em conta o ensurdecer global também
   // (não só o mute/volume individual) — por isso um snapshot separado.
   const effectiveVolume = useSyncExternalStore(subscribe, () => getEffectiveVolume(identity));
@@ -25,9 +25,15 @@ function ParticipantRow({ participant, speaking, micTrack, onContextMenu }: RowP
     if (micTrack instanceof RemoteAudioTrack) micTrack.setVolume(effectiveVolume);
   }, [micTrack, effectiveVolume]);
 
+  // Estes dois já são estados de rede (mic real desligado / atributo de
+  // ensurdecer publicado pelo LiveKit), então aparecem do mesmo jeito pra
+  // todo mundo na sala — diferente do "localMute" acima, que é só seu.
+  const micIsOff = !participant.isMicrophoneEnabled;
+  const isDeafened = participant.attributes.deafened === "1";
+
   return (
     <div
-      className={`voice-participant ${speaking ? "speaking" : ""} ${muted ? "muted" : ""}`}
+      className={`voice-participant ${speaking ? "speaking" : ""} ${localMute ? "muted" : ""}`}
       onContextMenu={(e) => {
         if (isLocal) return;
         e.preventDefault();
@@ -38,7 +44,18 @@ function ParticipantRow({ participant, speaking, micTrack, onContextMenu }: RowP
         {identity.slice(0, 2).toUpperCase()}
       </span>
       <span className="voice-participant-name">{identity}</span>
-      {muted && (
+      {isDeafened ? (
+        <span className="status-badge" title={`${identity} está ensurdecido(a)`}>
+          <HeadphoneOff size={13} />
+        </span>
+      ) : (
+        micIsOff && (
+          <span className="status-badge" title={`${identity} está com o microfone desligado`}>
+            <MicOff size={13} />
+          </span>
+        )
+      )}
+      {localMute && (
         <span className="muted-badge" title={`Você mutou ${identity}`}>
           <MicOff size={13} />
         </span>

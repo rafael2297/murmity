@@ -23,4 +23,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("update-status", listener);
   },
   installUpdate: () => ipcRenderer.invoke("install-update"),
+  onRequestCloseChoice: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("request-close-choice", listener);
+    return () => ipcRenderer.removeListener("request-close-choice", listener);
+  },
+  respondCloseChoice: (choice) => ipcRenderer.send("close-choice-response", choice),
 });

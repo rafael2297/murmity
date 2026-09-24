@@ -18,12 +18,16 @@ interface ElectronAPI {
   onHostLog: (callback: (line: string) => void) => () => void;
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
   installUpdate: () => Promise<void>;
+  onRequestCloseChoice: (callback: () => void) => () => void;
+  respondCloseChoice: (choice: CloseChoice) => void;
 }
 
 export interface UpdateStatus {
   status: "available" | "downloaded";
   version: string;
 }
+
+export type CloseChoice = "minimize" | "quit" | "cancel";
 
 function getElectronAPI(): ElectronAPI | null {
   if (typeof window === "undefined") return null;
@@ -97,4 +101,21 @@ export function onUpdateStatus(callback: (status: UpdateStatus) => void): () => 
 /** Fecha o app e instala a versão já baixada (o instalador reabre sozinho). */
 export async function installUpdate(): Promise<void> {
   await getElectronAPI()?.installUpdate();
+}
+
+/**
+ * Escuta o pedido do processo principal pra perguntar "minimizar ou fechar"
+ * quando a pessoa clica no X da janela (ver CloseConfirmModal.tsx). Fora do
+ * Electron não faz nada — o botão de fechar é só do sistema operacional no
+ * navegador, não tem como interceptar.
+ */
+export function onRequestCloseChoice(callback: () => void): () => void {
+  const api = getElectronAPI();
+  if (!api) return () => {};
+  return api.onRequestCloseChoice(callback);
+}
+
+/** Responde o pedido acima com a escolha feita no modal. */
+export function respondCloseChoice(choice: CloseChoice): void {
+  getElectronAPI()?.respondCloseChoice(choice);
 }

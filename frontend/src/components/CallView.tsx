@@ -7,6 +7,7 @@ import UpdateBadge from "./UpdateBadge";
 
 interface Props {
   username: string;
+  voiceChannelName: string;
   showMembers: boolean;
   onToggleMembers: () => void;
   backendUrl: string;
@@ -15,6 +16,7 @@ interface Props {
 
 export default function CallView({
   username,
+  voiceChannelName,
   showMembers,
   onToggleMembers,
   backendUrl,
@@ -27,7 +29,7 @@ export default function CallView({
     <div className="call-view">
       <div className="main-header">
         <Volume2 size={18} className="main-header-icon" />
-        <span>geral</span>
+        <span>{voiceChannelName}</span>
         <span className="main-header-count">{participants.length}</span>
         <UpdateBadge />
         <button

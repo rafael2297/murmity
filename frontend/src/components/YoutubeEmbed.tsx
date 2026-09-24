@@ -3,7 +3,7 @@ import { Play } from "lucide-react";
 import { LinkPreview } from "../api";
 
 interface Props {
-  preview: LinkPreview;
+  preview: Extract<LinkPreview, { type: "youtube" }>;
   sourceUrl: string;
 }
 

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { useLocalParticipant } from "@livekit/components-react";
-import { fetchSounds, fetchEmojis, SoundboardSound, CustomEmoji } from "../api";
+import { fetchSounds, SoundboardSound } from "../api";
 import { renderMessageText, buildEmojiUrlMap } from "../emojiText";
 import { playSoundboardSound } from "../soundboard";
 import { useSoundboardVolume } from "../SoundboardVolumeContext";
+import { useChatConnection } from "../ChatConnectionContext";
 import SoundboardVolumeControl from "./SoundboardVolumeControl";
 
 interface Props {
@@ -21,9 +22,12 @@ interface Props {
 export default function SoundboardPanel({ onClose, backendUrl, authToken }: Props) {
   const { localParticipant } = useLocalParticipant();
   const { volume } = useSoundboardVolume();
+  // Emoji personalizado vem do ChatConnectionContext (compartilhado,
+  // atualizado ao vivo) — usado pra mostrar o emoji do NOME do som (ex:
+  // ":buzina: Buzina") como imagem em vez do ":codigo:" cru.
+  const { customEmojis } = useChatConnection();
 
   const [sounds, setSounds] = useState<SoundboardSound[]>([]);
-  const [customEmojis, setCustomEmojis] = useState<CustomEmoji[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,13 +43,6 @@ export default function SoundboardPanel({ onClose, backendUrl, authToken }: Prop
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    // Pra mostrar o emoji personalizado (ex: "🎺 Buzina" com :buzina:)
-    // como imagem em vez do ":codigo:" cru dentro dos quadrados.
-    fetchEmojis(backendUrl, authToken)
-      .then((list) => {
-        if (!cancelled) setCustomEmojis(list);
-      })
-      .catch(() => {});
     return () => {
       cancelled = true;
     };

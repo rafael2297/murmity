@@ -386,6 +386,260 @@ body {
   max-width: 90vw;
 }
 
+/* ---- Modal "minimizar ou fechar" (X da janela no Electron) ---- */
+
+.close-confirm-modal {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 24px;
+  width: 420px;
+  max-width: 90vw;
+}
+
+.close-confirm-modal h3 {
+  margin: 0 0 12px;
+  font-size: 17px;
+}
+
+.close-confirm-modal p {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.close-confirm-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.close-confirm-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  color: white;
+}
+
+.close-confirm-btn.minimize {
+  background: var(--accent);
+}
+
+.close-confirm-btn.minimize:hover {
+  background: var(--accent-hover);
+}
+
+.close-confirm-btn.quit {
+  background: var(--danger);
+}
+
+.close-confirm-btn.quit:hover {
+  filter: brightness(1.1);
+}
+
+.close-confirm-cancel {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.close-confirm-cancel:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* ---- Modal de confirmação genérico (ver ConfirmContext.tsx) — substitui
+   window.confirm() em apagar mensagem/canal/som/emoji etc. Visual parecido
+   de propósito com o .close-confirm-modal acima, mas mais compacto (título
+   + mensagem de uma linha, não uma explicação de várias linhas). ---- */
+
+.confirm-modal {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 22px;
+  width: 380px;
+  max-width: 90vw;
+}
+
+.confirm-modal h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.confirm-modal p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.confirm-modal-actions .secondary-btn {
+  width: auto;
+  margin-top: 0;
+  padding: 8px 16px;
+}
+
+.confirm-modal-confirm-btn {
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  color: white;
+  background: var(--accent);
+}
+
+.confirm-modal-confirm-btn:hover {
+  background: var(--accent-hover);
+}
+
+.confirm-modal-confirm-btn.danger {
+  background: var(--danger);
+}
+
+.confirm-modal-confirm-btn.danger:hover {
+  filter: brightness(1.1);
+}
+
+/* ---- Toast de erro (ver ConfirmContext.tsx) — substitui alert(err.message).
+   Empilha no canto, mais recente embaixo; some sozinho, mas dá pra fechar
+   na mão também. ---- */
+
+.toast-stack {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--bg-secondary);
+  border-left: 3px solid var(--danger);
+  border-radius: 6px;
+  padding: 10px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  animation: toast-in 0.15s ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toast-icon {
+  color: var(--danger);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.toast-message {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  flex: 1;
+}
+
+.toast-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  display: flex;
+}
+
+.toast-close:hover {
+  color: var(--text);
+}
+
+/* ---- Modal "criar canal" (ver CreateChannelModal.tsx) ---- */
+
+.create-channel-modal h3 {
+  margin: 0 0 14px;
+  font-size: 16px;
+}
+
+.create-channel-input {
+  width: 100%;
+  background: var(--bg-tertiary);
+  border: 1px solid #3a3c41;
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.create-channel-error {
+  color: var(--danger);
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.create-channel-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.create-channel-actions button {
+  flex: 1;
+  border: none;
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.create-channel-actions button[type="submit"] {
+  background: var(--accent);
+  color: white;
+}
+
+.create-channel-actions button[type="submit"]:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.create-channel-actions button[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* ---- Configurações: modal maior, com abas verticais à esquerda ---- */
 
 .settings-modal {
@@ -906,6 +1160,88 @@ body {
   width: 100%;
 }
 
+/* ---- Qualidade do compartilhamento de tela (ver ScreenShareQualityPicker.tsx) ---- */
+
+.screen-quality-modal {
+  width: 400px;
+  max-width: 92vw;
+}
+
+.screen-quality-section {
+  margin-bottom: 16px;
+}
+
+.screen-quality-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.screen-quality-options {
+  display: flex;
+  gap: 8px;
+}
+
+.screen-quality-btn {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 2px solid transparent;
+  border-radius: 6px;
+  padding: 10px 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.screen-quality-btn:hover {
+  background: var(--bg-hover);
+}
+
+.screen-quality-btn.selected {
+  border-color: var(--accent);
+  background: rgba(88, 101, 242, 0.16);
+  color: var(--text-bright);
+}
+
+.screen-quality-note {
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.screen-quality-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.screen-quality-actions .secondary-btn {
+  width: auto;
+  margin-top: 0;
+  padding: 8px 16px;
+}
+
+.screen-quality-confirm-btn {
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  color: white;
+  background: var(--accent);
+}
+
+.screen-quality-confirm-btn:hover {
+  background: var(--accent-hover);
+}
+
 /* ---- Foco/maximizar participante ---- */
 
 .focusable-tile {
@@ -1048,11 +1384,56 @@ body {
   padding: 16px 8px 4px 16px;
 }
 
+/* Cabeçalho de categoria + botão "+" de criar canal (ver ChannelSidebar.tsx) */
+.channel-category-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 12px;
+}
+
+.channel-category-row .channel-category {
+  padding-right: 0;
+}
+
+.channel-add-btn {
+  color: var(--text-muted);
+  opacity: 0;
+}
+
+.channel-category-row:hover .channel-add-btn {
+  opacity: 1;
+}
+
+/* Linha de um canal + botão de apagar, que só aparece no hover — mesmo
+   padrão do .chat-message-actions no chat. */
+.channel-item-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 8px;
+}
+
+.channel-item-row .channel-delete-btn {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0;
+}
+
+.channel-item-row:hover .channel-delete-btn {
+  opacity: 1;
+}
+
+.channel-item-row .channel-delete-btn:hover {
+  color: var(--danger);
+}
+
 .channel-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0 8px;
+  flex: 1;
+  min-width: 0;
   padding: 6px 8px;
   border-radius: 4px;
   color: var(--text-muted);
@@ -1130,6 +1511,16 @@ body {
 
 .muted-badge {
   color: var(--danger);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* Ícone de status "de rede" (mic realmente desligado / ensurdecido) —
+   visível para todo mundo na sala, ao lado do nome. Cor mais neutra que
+   o .muted-badge (que é só "eu mutei essa pessoa", algo pessoal seu). */
+.status-badge {
+  color: var(--text-muted);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -1662,6 +2053,54 @@ body {
   display: flex;
 }
 
+/* ---- Reações em emoji (ver ChatPanel.tsx) ---- */
+
+.chat-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.chat-reaction-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 2px 7px;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.chat-reaction-badge:hover {
+  border-color: var(--text-muted);
+}
+
+/* Reação que a própria pessoa deu — mesma cor de destaque do resto do
+   app, pra ficar óbvio que clicar de novo tira a reação (toggle). */
+.chat-reaction-badge.own {
+  background: rgba(88, 101, 242, 0.16);
+  border-color: var(--accent);
+}
+
+.chat-reaction-badge img.chat-emoji {
+  width: 15px;
+  height: 15px;
+}
+
+.chat-reaction-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.chat-reaction-badge.own .chat-reaction-count {
+  color: var(--text);
+}
+
 .chat-edited-tag {
   font-size: 10px;
   color: var(--text-muted);
@@ -1936,6 +2375,59 @@ body {
   text-decoration: underline;
 }
 
+/* Markdown inline numa mensagem de chat (ver renderMessageContent /
+   renderInline em emojiText.tsx) */
+
+.chat-inline-code {
+  background: var(--bg-tertiary);
+  border: 1px solid #3a3c41;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.chat-codeblock {
+  background: var(--bg-tertiary);
+  border: 1px solid #3a3c41;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 4px 0;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.chat-codeblock code {
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-size: 13px;
+  white-space: pre;
+}
+
+/* Spoiler: some sob uma tarja até a pessoa clicar — mesmo texto e mesma
+   largura por baixo, então clicar não faz o layout "pular". */
+.chat-spoiler {
+  background: #1e1f22;
+  color: transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.chat-spoiler:hover {
+  background: #2b2d31;
+}
+
+.chat-spoiler.revealed {
+  background: var(--bg-tertiary);
+  color: inherit;
+  cursor: text;
+}
+
+.chat-spoiler.revealed:hover {
+  background: var(--bg-tertiary);
+}
+
 /* Card de preview de link (hoje só YouTube, ver YoutubeEmbed.tsx) */
 
 .link-embed {
@@ -2009,6 +2501,32 @@ body {
   border: none;
   border-radius: 4px;
   display: block;
+}
+
+/* Preview genérico (Open Graph) — qualquer site que não seja YouTube.
+   Mesma base do .link-embed/.link-embed-title acima. */
+
+.generic-embed-description {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.generic-embed-image-link {
+  display: block;
+}
+
+.generic-embed-image {
+  display: block;
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: 4px;
 }
 
 /* Prévia do anexo escolhido, antes de enviar a mensagem — fica entre a

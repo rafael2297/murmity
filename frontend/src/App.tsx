@@ -3,8 +3,10 @@ import StartScreen from "./components/StartScreen";
 import LoginScreen from "./components/LoginScreen";
 import Workspace from "./components/Workspace";
 import UpdateBanner from "./components/UpdateBanner";
+import CloseConfirmModal from "./components/CloseConfirmModal";
 import { UpdateProvider } from "./UpdateContext";
 import { SoundboardVolumeProvider } from "./SoundboardVolumeContext";
+import { ConfirmProvider } from "./ConfirmContext";
 import { AuthUser } from "./api";
 import { isEnvElectron } from "./host";
 
@@ -55,42 +57,45 @@ export default function App() {
   // — assim o estado de atualização não se perde quando o usuário sai da
   // tela de login/hospedar e entra no Workspace (ver UpdateContext.tsx).
   return (
-    <UpdateProvider>
-      <SoundboardVolumeProvider>
-        {!session ? (
-          <div className="app-shell">
-            <UpdateBanner />
-            <header>
-              <h1>🎧 Murmity</h1>
-            </header>
-            <main>
-              {screen === "start" ? (
-                <StartScreen
-                  onHostReady={(backendUrl) => {
-                    setPrefillBackendUrl(backendUrl);
-                    setScreen("login");
-                  }}
-                  onJoinExisting={() => setScreen("login")}
-                  onAuthenticated={handleAuthenticated}
-                />
-              ) : (
-                <LoginScreen
-                  onAuthenticated={handleAuthenticated}
-                  initialBackendUrl={prefillBackendUrl}
-                  onBack={isEnvElectron() ? () => setScreen("start") : undefined}
-                />
-              )}
-            </main>
-          </div>
-        ) : (
-          <Workspace
-            backendUrl={session.backendUrl}
-            authToken={session.token}
-            username={session.user.username}
-            onLogout={handleLogout}
-          />
-        )}
-      </SoundboardVolumeProvider>
-    </UpdateProvider>
+    <ConfirmProvider>
+      <UpdateProvider>
+        <SoundboardVolumeProvider>
+          <CloseConfirmModal />
+          {!session ? (
+            <div className="app-shell">
+              <UpdateBanner />
+              <header>
+                <h1>🎧 Murmity</h1>
+              </header>
+              <main>
+                {screen === "start" ? (
+                  <StartScreen
+                    onHostReady={(backendUrl) => {
+                      setPrefillBackendUrl(backendUrl);
+                      setScreen("login");
+                    }}
+                    onJoinExisting={() => setScreen("login")}
+                    onAuthenticated={handleAuthenticated}
+                  />
+                ) : (
+                  <LoginScreen
+                    onAuthenticated={handleAuthenticated}
+                    initialBackendUrl={prefillBackendUrl}
+                    onBack={isEnvElectron() ? () => setScreen("start") : undefined}
+                  />
+                )}
+              </main>
+            </div>
+          ) : (
+            <Workspace
+              backendUrl={session.backendUrl}
+              authToken={session.token}
+              username={session.user.username}
+              onLogout={handleLogout}
+            />
+          )}
+        </SoundboardVolumeProvider>
+      </UpdateProvider>
+    </ConfirmProvider>
   );
 }

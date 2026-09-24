@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, FormEvent } from "react";
 import { Trash2, Plus, Smile } from "lucide-react";
-import { fetchSounds, uploadSound, deleteSound, fetchEmojis, CustomEmoji, SoundboardSound } from "../api";
+import { fetchSounds, uploadSound, deleteSound, SoundboardSound } from "../api";
 import { renderMessageText, buildEmojiUrlMap } from "../emojiText";
 import EmojiPicker from "./EmojiPicker";
+import { useConfirm } from "../ConfirmContext";
+import { useChatConnection } from "../ChatConnectionContext";
 
 interface Props {
   backendUrl: string;
@@ -17,6 +19,11 @@ interface Props {
  * gerenciar é uma coisa, tocar é outra.
  */
 export default function SoundboardManager({ backendUrl, authToken, username }: Props) {
+  const { confirm, notifyError } = useConfirm();
+  // Emoji personalizado usado no NOME do som (ex: ":buzina: Buzina") — vem
+  // do ChatConnectionContext (compartilhado, atualizado ao vivo) em vez de
+  // buscar aqui, mesma ideia do SoundboardPanel.tsx.
+  const { customEmojis } = useChatConnection();
   const [sounds, setSounds] = useState<SoundboardSound[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,11 +33,6 @@ export default function SoundboardManager({ backendUrl, authToken, username }: P
   const [uploading, setUploading] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Emoji personalizado usado no NOME do som (ex: "🎺 Buzina" ou
-  // ":buzina: Buzina") — pra mostrar a imagem em vez do ":codigo:" cru,
-  // tanto aqui na lista quanto na grade de tocar (SoundboardPanel.tsx).
-  const [customEmojis, setCustomEmojis] = useState<CustomEmoji[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,14 +45,6 @@ export default function SoundboardManager({ backendUrl, authToken, username }: P
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
-      });
-    fetchEmojis(backendUrl, authToken)
-      .then((list) => {
-        if (!cancelled) setCustomEmojis(list);
-      })
-      .catch(() => {
-        // Sem emoji carregado, o nome só aparece com o ":codigo:" cru em
-        // vez da imagem — não trava a lista de sons por causa disso.
       });
     return () => {
       cancelled = true;
@@ -77,13 +71,18 @@ export default function SoundboardManager({ backendUrl, authToken, username }: P
   }
 
   async function handleDelete(sound: SoundboardSound) {
-    const confirmed = window.confirm(`Remover o som "${sound.name}"?`);
+    const confirmed = await confirm({
+      title: "Remover som",
+      message: `Remover o som "${sound.name}"?`,
+      confirmLabel: "Remover",
+      danger: true,
+    });
     if (!confirmed) return;
     try {
       await deleteSound(backendUrl, authToken, sound.id);
       setSounds((prev) => prev.filter((s) => s.id !== sound.id));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Erro ao remover som");
+      notifyError(err instanceof Error ? err.message : "Erro ao remover som");
     }
   }
 
@@ -174,13 +173,9 @@ export default function SoundboardManager({ backendUrl, authToken, username }: P
       {pickerOpen && (
         <EmojiPicker
           backendUrl={backendUrl}
-          authToken={authToken}
           onClose={() => setPickerOpen(false)}
           onSelectNative={(emoji) => insertAtCursor(emoji)}
-          onSelectCustom={(emoji) => {
-            insertAtCursor(`:${emoji.code}:`);
-            setCustomEmojis((prev) => (prev.some((e) => e.id === emoji.id) ? prev : [...prev, emoji]));
-          }}
+          onSelectCustom={(emoji) => insertAtCursor(`:${emoji.code}:`)}
         />
       )}
     </>

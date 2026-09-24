@@ -4,6 +4,7 @@ import { X, User, SlidersHorizontal, Music4, Smile, LogOut } from "lucide-react"
 import SoundboardManager from "./SoundboardManager";
 import SoundboardVolumeControl from "./SoundboardVolumeControl";
 import EmojiManager from "./EmojiManager";
+import { useConfirm } from "../ConfirmContext";
 
 interface Props {
   onClose: () => void;
@@ -58,12 +59,16 @@ export default function SettingsModal({
   onLogout,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("account");
+  const { confirm } = useConfirm();
 
-  function handleLogoutClick() {
+  async function handleLogoutClick() {
     if (inCall) {
-      const confirmed = window.confirm(
-        "Trocar de nome/servidor vai te desconectar da call de voz agora. Continuar?"
-      );
+      const confirmed = await confirm({
+        title: "Sair da conta",
+        message: "Trocar de nome/servidor vai te desconectar da call de voz agora. Continuar?",
+        confirmLabel: "Sair mesmo assim",
+        danger: true,
+      });
       if (!confirmed) return;
     }
     onClose();
@@ -147,7 +152,7 @@ export default function SettingsModal({
             )}
 
             {activeTab === "emojis" && (
-              <EmojiManager backendUrl={backendUrl} authToken={authToken} username={username} />
+              <EmojiManager backendUrl={backendUrl} username={username} />
             )}
           </div>
         </div>

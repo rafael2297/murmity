@@ -14,6 +14,12 @@ import { isDeafened, setDeafened, subscribe } from "../localAudioPrefs";
  * desensurdecer, o mic só volta a ligar se estava ligado antes — se você
  * já estava mutado, continua mutado.
  *
+ * O estado "ensurdecido" também é publicado como atributo do participante
+ * do LiveKit (`localParticipant.setAttributes`), então todo mundo na sala
+ * vê o ícone de ensurdecido do seu lado (ver VoiceParticipants.tsx) —
+ * diferente do volume/mute por participante, que é só uma preferência
+ * local sua e não é visível pra ninguém.
+ *
  * Vive na mesma barra do mic (sidebar-bottom), então só é renderizado
  * dentro do contexto do <LiveKitRoom> (ver ChannelSidebar.tsx).
  */
@@ -28,13 +34,30 @@ export default function VoiceDeafenControl() {
       if (micWasEnabled.current) {
         await localParticipant.setMicrophoneEnabled(true);
       }
+      publishDeafenedAttribute(false);
     } else {
       micWasEnabled.current = isMicrophoneEnabled;
       setDeafened(true);
       if (isMicrophoneEnabled) {
         await localParticipant.setMicrophoneEnabled(false);
       }
+      publishDeafenedAttribute(true);
     }
+  }
+
+  // setAttributes é "melhor esforço": se o token não tiver a permissão
+  // canUpdateOwnMetadata (ou a rede falhar num momento ruim), isso não pode
+  // travar o mute do mic acima — por isso vive numa função separada, sem
+  // await no fluxo principal, com o próprio catch cuidando do log.
+  function publishDeafenedAttribute(value: boolean) {
+    localParticipant
+      .setAttributes({ deafened: value ? "1" : "0" })
+      .catch((err) => {
+        console.warn(
+          "Não foi possível publicar o estado de ensurdecer pros outros participantes (o mute do mic continua funcionando normalmente):",
+          err
+        );
+      });
   }
 
   return (

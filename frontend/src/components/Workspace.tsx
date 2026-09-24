@@ -12,9 +12,6 @@ import { ensureNotificationPermission } from "../notifications";
 import { ChatConnectionProvider } from "../ChatConnectionContext";
 import { setDeafened } from "../localAudioPrefs";
 
-// Canal de voz único (ver seção 11 do PROJECT_CONTEXT.md).
-const VOICE_ROOM_NAME = "geral";
-
 interface Props {
   backendUrl: string;
   authToken: string;
@@ -33,7 +30,11 @@ export default function Workspace({ backendUrl, authToken, username, onLogout }:
     ensureNotificationPermission();
   }, []);
 
-  async function handleJoinVoice() {
+  // channelId aqui é o ID do canal de voz (múltiplos canais — ver
+  // ChannelSidebar), usado direto como nome de sala no LiveKit. Continua
+  // sendo só uma string qualquer pro backend (rooms.ts já era genérico
+  // por roomName desde antes dessa feature).
+  async function handleJoinVoice(channelId: string) {
     setVoiceError(null);
 
     // getUserMedia só funciona em contexto seguro (https ou localhost) —
@@ -49,7 +50,7 @@ export default function Workspace({ backendUrl, authToken, username, onLogout }:
 
     setJoining(true);
     try {
-      const info = await fetchJoinToken(backendUrl, authToken, VOICE_ROOM_NAME);
+      const info = await fetchJoinToken(backendUrl, authToken, channelId);
       setJoinInfo(info);
       playJoinSound();
     } catch (err) {
@@ -82,6 +83,7 @@ export default function Workspace({ backendUrl, authToken, username, onLogout }:
         backendUrl={backendUrl}
         authToken={authToken}
         inCall={!!joinInfo}
+        activeVoiceChannelId={joinInfo?.room ?? null}
         joining={joining}
         mainView={mainView}
         onJoinVoice={handleJoinVoice}
@@ -92,6 +94,7 @@ export default function Workspace({ backendUrl, authToken, username, onLogout }:
       <MainContent
         username={username}
         inCall={!!joinInfo}
+        activeVoiceChannelId={joinInfo?.room ?? null}
         view={mainView}
         showMembers={showMembers}
         onToggleMembers={() => setShowMembers((visible) => !visible)}
