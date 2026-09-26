@@ -549,6 +549,10 @@ body {
   animation: toast-in 0.15s ease-out;
 }
 
+.toast-info {
+  border-left-color: var(--accent);
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;
@@ -564,6 +568,10 @@ body {
   color: var(--danger);
   flex-shrink: 0;
   margin-top: 1px;
+}
+
+.toast-info .toast-icon {
+  color: var(--accent);
 }
 
 .toast-message {
@@ -1117,6 +1125,52 @@ body {
   max-width: 92vw;
 }
 
+/* Abas "Telas"/"Aplicativos" do seletor de compartilhamento — mesma ideia
+   do Discord, separa em vez de misturar tela inteira com janela de app
+   numa lista só. */
+.screen-picker-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 12px 0;
+  border-bottom: 1px solid var(--bg-tertiary);
+}
+
+.screen-picker-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 4px 10px;
+  margin-right: 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.screen-picker-tab:hover {
+  color: var(--text);
+}
+
+.screen-picker-tab.selected {
+  color: var(--text-bright);
+  border-bottom-color: var(--accent);
+}
+
+.screen-picker-tab-count {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.screen-picker-tab.selected .screen-picker-tab-count {
+  background: rgba(88, 101, 242, 0.16);
+  color: var(--text-bright);
+}
+
 .screen-picker-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -1242,6 +1296,26 @@ body {
   background: var(--accent-hover);
 }
 
+/* Botão de parar de vez, só aparece no modo edição (ver
+   ScreenSharePicker.tsx / ScreenShareQualityPicker.tsx). */
+.screen-quality-stop-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  color: white;
+  background: var(--danger);
+}
+
+.screen-quality-stop-btn:hover {
+  filter: brightness(1.1);
+}
+
 /* ---- Foco/maximizar participante ---- */
 
 .focusable-tile {
@@ -1264,7 +1338,15 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   grid-auto-rows: minmax(140px, 1fr);
   gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.participant-grid-wrapper {
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .focus-view {

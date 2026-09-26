@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { MonitorX } from "lucide-react";
 
 export interface ScreenShareQuality {
   width: number;
@@ -8,8 +9,15 @@ export interface ScreenShareQuality {
 }
 
 interface Props {
+  // "edit" é usado quando já tem uma transmissão rolando — muda o texto
+  // do botão de confirmar e mostra a opção de parar de vez.
+  mode?: "start" | "edit";
+  // Pré-seleciona a qualidade já em uso, em vez de sempre voltar pro
+  // padrão 1080p/30fps ao abrir o modal de edição.
+  initialQuality?: ScreenShareQuality;
   onConfirm: (quality: ScreenShareQuality) => void;
   onCancel: () => void;
+  onStop?: () => void;
 }
 
 type ResolutionKey = "720" | "1080" | "source";
@@ -43,11 +51,62 @@ const RESOLUTION_LABELS: Record<ResolutionKey, string> = {
 };
 
 /**
+ * Escada de qualidade, da mais baixa pra mais alta — usada pela adaptação
+ * automática (ver VoiceUserBar.tsx) pra saber qual é "um degrau abaixo"
+ * da qualidade atual quando a conexão fica ruim. A ordem aqui é uma
+ * escolha de bom senso (fps baixo em resolução baixa perde menos do que
+ * pular direto pra uma resolução maior), não uma métrica exata.
+ */
+export const QUALITY_LADDER: ScreenShareQuality[] = (
+  [
+    ["720", "15"],
+    ["720", "30"],
+    ["1080", "15"],
+    ["720", "60"],
+    ["1080", "30"],
+    ["source", "15"],
+    ["1080", "60"],
+    ["source", "30"],
+    ["source", "60"],
+  ] as [ResolutionKey, FpsKey][]
+).map(([res, fps]) => ({
+  width: RESOLUTION_DIMENSIONS[res].width,
+  height: RESOLUTION_DIMENSIONS[res].height,
+  frameRate: Number(fps),
+  maxBitrate: BITRATE_TABLE[res][fps],
+}));
+
+/** Posição de uma qualidade na escada acima (ou -1 se não bater com nenhum degrau conhecido). */
+export function findLadderIndex(quality: ScreenShareQuality): number {
+  return QUALITY_LADDER.findIndex(
+    (q) => q.width === quality.width && q.height === quality.height && q.frameRate === quality.frameRate
+  );
+}
+
+/** Um degrau abaixo na escada, ou null se já estiver no mais baixo possível (ou fora da escada). */
+export function stepDownQuality(quality: ScreenShareQuality): ScreenShareQuality | null {
+  const index = findLadderIndex(quality);
+  if (index <= 0) return null;
+  return QUALITY_LADDER[index - 1];
+}
+
+/** Descobre qual botão de resolução bate com a qualidade atual (usado só pra pré-selecionar no modo edição). */
+function resolutionKeyFromQuality(quality: ScreenShareQuality | undefined): ResolutionKey {
+  if (!quality) return "1080";
+  const match = (Object.keys(RESOLUTION_DIMENSIONS) as ResolutionKey[]).find(
+    (key) =>
+      RESOLUTION_DIMENSIONS[key].width === quality.width &&
+      RESOLUTION_DIMENSIONS[key].height === quality.height
+  );
+  return match ?? "1080";
+}
+
+/**
  * Passo de qualidade do compartilhamento de tela — aparece depois de
  * escolher O QUE compartilhar (no Electron, depois do ScreenSharePicker;
  * no navegador, antes do seletor nativo do próprio SO), igual ao "Ir ao
  * vivo" do Discord: escolhe resolução e fps, e só DEPOIS disso a
- * transmissão realmente começa.
+ * transmissão realmente começa (ou é atualizada, no modo edição).
  *
  * Isso substitui os valores fixos que existiam antes (1080p/30fps/4Mbps
  * sempre) por uma escolha manual — quem tem upload fraco consegue cair
@@ -55,9 +114,15 @@ const RESOLUTION_LABELS: Record<ResolutionKey, string> = {
  * Não é adaptação AUTOMÁTICA por banda disponível (isso ainda não existe
  * — ver PROJECT_CONTEXT.md), é o controle manual mesmo.
  */
-export default function ScreenShareQualityPicker({ onConfirm, onCancel }: Props) {
-  const [resolution, setResolution] = useState<ResolutionKey>("1080");
-  const [fps, setFps] = useState<FpsKey>("30");
+export default function ScreenShareQualityPicker({
+  mode = "start",
+  initialQuality,
+  onConfirm,
+  onCancel,
+  onStop,
+}: Props) {
+  const [resolution, setResolution] = useState<ResolutionKey>(() => resolutionKeyFromQuality(initialQuality));
+  const [fps, setFps] = useState<FpsKey>(() => (initialQuality ? (String(initialQuality.frameRate) as FpsKey) : "30"));
 
   function confirm() {
     const dims = RESOLUTION_DIMENSIONS[resolution];
@@ -73,7 +138,7 @@ export default function ScreenShareQualityPicker({ onConfirm, onCancel }: Props)
     <div className="modal-backdrop" onClick={onCancel}>
       <div className="modal screen-quality-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>Qualidade da transmissão</h3>
+          <h3>{mode === "edit" ? "Trocar qualidade da transmissão" : "Qualidade da transmissão"}</h3>
         </div>
 
         <div className="screen-quality-section">
@@ -115,8 +180,14 @@ export default function ScreenShareQualityPicker({ onConfirm, onCancel }: Props)
           <button className="secondary-btn" onClick={onCancel}>
             Cancelar
           </button>
+          {mode === "edit" && onStop && (
+            <button className="screen-quality-stop-btn" onClick={onStop}>
+              <MonitorX size={16} />
+              Parar de compartilhar
+            </button>
+          )}
           <button className="screen-quality-confirm-btn" onClick={confirm}>
-            Compartilhar tela
+            {mode === "edit" ? "Aplicar mudanças" : "Compartilhar tela"}
           </button>
         </div>
       </div>

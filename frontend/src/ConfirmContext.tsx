@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useRef, useState, ReactNode } from "react";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle, Info, X } from "lucide-react";
 
 export interface ConfirmOptions {
   title?: string;
@@ -19,6 +19,7 @@ interface PendingConfirm extends Required<ConfirmOptions> {
 interface Toast {
   id: number;
   message: string;
+  kind: "error" | "info";
 }
 
 interface ConfirmContextValue {
@@ -36,6 +37,13 @@ interface ConfirmContextValue {
    * Não bloqueia; some sozinho depois de alguns segundos.
    */
   notifyError: (message: string) => void;
+  /**
+   * Aviso neutro (não é erro de ninguém) — usado por coisas que
+   * acontecem sozinhas e a pessoa devia saber, tipo a qualidade do
+   * compartilhamento de tela cair automaticamente por causa de conexão
+   * ruim (ver VoiceUserBar.tsx). Mesmo toast, cor/ícone diferentes.
+   */
+  notifyInfo: (message: string) => void;
 }
 
 const ConfirmContext = createContext<ConfirmContextValue | null>(null);
@@ -73,7 +81,16 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   const notifyError = useCallback((message: string) => {
     idRef.current += 1;
     const id = idRef.current;
-    setToasts((prev) => [...prev, { id, message }]);
+    setToasts((prev) => [...prev, { id, message, kind: "error" }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, TOAST_DURATION_MS);
+  }, []);
+
+  const notifyInfo = useCallback((message: string) => {
+    idRef.current += 1;
+    const id = idRef.current;
+    setToasts((prev) => [...prev, { id, message, kind: "info" }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, TOAST_DURATION_MS);
@@ -84,7 +101,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <ConfirmContext.Provider value={{ confirm, notifyError }}>
+    <ConfirmContext.Provider value={{ confirm, notifyError, notifyInfo }}>
       {children}
 
       {pending && (
@@ -111,8 +128,12 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       {toasts.length > 0 && (
         <div className="toast-stack">
           {toasts.map((toast) => (
-            <div key={toast.id} className="toast toast-error">
-              <AlertTriangle size={16} className="toast-icon" />
+            <div key={toast.id} className={`toast toast-${toast.kind}`}>
+              {toast.kind === "error" ? (
+                <AlertTriangle size={16} className="toast-icon" />
+              ) : (
+                <Info size={16} className="toast-icon" />
+              )}
               <span className="toast-message">{toast.message}</span>
               <button className="toast-close" onClick={() => dismissToast(toast.id)} title="Fechar">
                 <X size={14} />

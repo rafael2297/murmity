@@ -156,6 +156,11 @@ ipcMain.handle("get-desktop-sources", async () => {
     id: s.id,
     name: s.name,
     thumbnailDataURL: s.thumbnail.toDataURL(),
+    // O id do Electron já vem prefixado por tipo ("screen:0:0" ou
+    // "window:12345:0") — só separa isso num campo próprio, pra dar pra
+    // agrupar em abas "Telas"/"Aplicativos" no seletor (ver
+    // ScreenSharePicker.tsx), igual ao Discord.
+    type: s.id.startsWith("screen:") ? "screen" : "window",
   }));
 });
 

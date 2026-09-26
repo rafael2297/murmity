@@ -116,8 +116,16 @@ export default function ParticipantGrid() {
     { onlySubscribed: true }
   );
 
+  const hasScreenShare = tracks.some((t) => t.source === Track.Source.ScreenShare);
+
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [hideOthers, setHideOthers] = useState(false);
+  // Esconder as câmeras/avatares da grade normal (não focada), deixando
+  // só as telas compartilhadas — que aí ocupam o espaço sozinhas (o
+  // CSS Grid já se reorganiza automaticamente, não precisa calcular
+  // tamanho na mão). Só faz sentido oferecer esse botão quando tem
+  // alguma tela compartilhada ativa (ver hasScreenShare abaixo).
+  const [hideParticipants, setHideParticipants] = useState(false);
 
   const focusedTrack = focusedKey ? tracks.find((t) => trackKey(t) === focusedKey) ?? null : null;
   const screenAudioControllers = screenAudioTracks.map((trackRef) => (
@@ -178,13 +186,27 @@ export default function ParticipantGrid() {
     );
   }
 
+  const visibleTracks = hideParticipants
+    ? tracks.filter((t) => t.source === Track.Source.ScreenShare)
+    : tracks;
+
   return (
     <>
       {screenAudioControllers}
-      <div className="participant-grid">
-        {tracks.map((t) => (
-          <ClickableTile key={trackKey(t)} trackRef={t} onClick={() => setFocusedKey(trackKey(t))} />
-        ))}
+      <div className="participant-grid-wrapper">
+        {hasScreenShare && (
+          <div className="focus-toolbar">
+            <button className="unfocus-btn" onClick={() => setHideParticipants((v) => !v)}>
+              {hideParticipants ? <Users size={16} /> : <EyeOff size={16} />}
+              {hideParticipants ? "Mostrar participantes" : "Esconder participantes"}
+            </button>
+          </div>
+        )}
+        <div className="participant-grid">
+          {visibleTracks.map((t) => (
+            <ClickableTile key={trackKey(t)} trackRef={t} onClick={() => setFocusedKey(trackKey(t))} />
+          ))}
+        </div>
       </div>
     </>
   );
