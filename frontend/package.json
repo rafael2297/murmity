@@ -1,7 +1,7 @@
 {
   "name": "murmity-frontend",
   "private": true,
-  "version": "0.1.9",
+  "version": "0.1.10",
   "type": "module",
   "main": "electron/main.cjs",
   "repository": {
@@ -16,6 +16,7 @@
     "electron:dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build && electron-builder --publish never",
     "electron:deploy": "node ../scripts/release.cjs",
+    "electron:fix": "node ../scripts/release.cjs fix",
     "electron:release": "npm run build && electron-builder --publish always"
   },
   "dependencies": {
