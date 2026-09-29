@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, desktopCapturer, Tray, Menu, nativeImage } = require("electron");
+const { app, BrowserWindow, ipcMain, session, desktopCapturer, Tray, Menu, nativeImage, globalShortcut } = require("electron");
 const path = require("path");
 const os = require("os");
 const { spawn } = require("child_process");
@@ -9,6 +9,10 @@ let tray = null;
 let backendProcess = null;
 let livekitProcess = null;
 let pendingScreenShareSourceId = null;
+// Atalho global de alternar mudo (Ctrl+Shift+M por padrão, configurável
+// nas Configurações → Atalhos). Só existe UM por vez — trocar de atalho
+// significa desregistrar este antes de registrar o novo.
+let registeredMuteAccelerator = null;
 // Fechar a janela (X) só esconde ela na bandeja — isQuitting é o que
 // diferencia isso de um "Sair" de verdade (menu da bandeja). Sem essa
 // flag, não teria como saber se o "close" veio de alguém clicando no X
@@ -168,6 +172,31 @@ ipcMain.handle("set-screen-share-source", (_event, sourceId) => {
   pendingScreenShareSourceId = sourceId;
 });
 
+// --- IPC: atalho global de alternar mudo ---
+//
+// O globalShortcut do Electron só sabe avisar quando a tecla é APERTADA —
+// não existe callback de soltura (ver docs oficiais). Por isso isso aqui
+// é só um "alternar mudo" que funciona em qualquer lugar (até com um jogo
+// em foco), não um "segure pra falar" de verdade — esse fica restrito a
+// dentro do app (ver VoiceMicControl.tsx, que ouve keydown/keyup direto
+// no navegador, funcionando só com a janela do Murmity em foco).
+ipcMain.handle("register-mute-shortcut", (_event, accelerator) => {
+  if (registeredMuteAccelerator) {
+    globalShortcut.unregister(registeredMuteAccelerator);
+    registeredMuteAccelerator = null;
+  }
+  if (!accelerator) return true; // só queria desregistrar mesmo
+
+  const ok = globalShortcut.register(accelerator, () => {
+    sendToRenderer("global-mute-toggle", null);
+  });
+  if (ok) registeredMuteAccelerator = accelerator;
+  // false aqui quase sempre quer dizer que outro programa já pegou essa
+  // combinação primeiro — o SO não deixa dois apps disputando o mesmo
+  // atalho global.
+  return ok;
+});
+
 ipcMain.handle("list-network-interfaces", () => {
   const nets = os.networkInterfaces();
   const result = [];
@@ -323,4 +352,8 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   stopAllSidecars();
+  // globalShortcut.register fica registrado no SO até alguém desregistrar
+  // — sem isso, fechar o app deixaria o atalho "preso" (nenhum outro
+  // programa conseguiria usar aquela combinação até reiniciar o PC).
+  globalShortcut.unregisterAll();
 });

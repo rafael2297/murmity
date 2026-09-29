@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
+import { LiveKitRoom } from "@livekit/components-react";
 import { fetchJoinToken, JoinTokenResult } from "../api";
 import ChannelSidebar from "./ChannelSidebar";
 import MainContent from "./MainContent";
 import VoiceSoundEffects from "./VoiceSoundEffects";
 import SoundboardAudioRenderer from "./SoundboardAudioRenderer";
+import VoiceAudioRenderer from "./VoiceAudioRenderer";
 import ReconnectBanner from "./ReconnectBanner";
 import MemberSidebar from "./MemberSidebar";
 import { playJoinSound, playLeaveSound } from "../soundEffects";
@@ -131,7 +132,7 @@ export default function Workspace({ backendUrl, authToken, username, onLogout }:
           <VoiceSoundEffects />
           <SoundboardAudioRenderer />
           {layout}
-          <RoomAudioRenderer />
+          <VoiceAudioRenderer />
         </LiveKitRoom>
       ) : (
         layout

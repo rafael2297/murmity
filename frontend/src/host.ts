@@ -20,6 +20,8 @@ interface ElectronAPI {
   installUpdate: () => Promise<void>;
   onRequestCloseChoice: (callback: () => void) => () => void;
   respondCloseChoice: (choice: CloseChoice) => void;
+  registerMuteShortcut: (accelerator: string | null) => Promise<boolean>;
+  onGlobalMuteToggle: (callback: () => void) => () => void;
 }
 
 export interface UpdateStatus {
@@ -118,4 +120,30 @@ export function onRequestCloseChoice(callback: () => void): () => void {
 /** Responde o pedido acima com a escolha feita no modal. */
 export function respondCloseChoice(choice: CloseChoice): void {
   getElectronAPI()?.respondCloseChoice(choice);
+}
+
+/**
+ * Registra (ou troca) o atalho GLOBAL de alternar mudo — funciona mesmo
+ * com outro programa em foco (ex: dentro de um jogo), mas só ALTERNA
+ * (o Electron não tem como saber quando a tecla é solta fora do próprio
+ * app — ver PROJECT_CONTEXT.md). Passar `null` só desregistra.
+ *
+ * Devolve `false` quando o sistema operacional recusa a combinação (quase
+ * sempre porque outro programa já registrou ela primeiro) — quem chama
+ * isso deve avisar a pessoa nesse caso, não falhar silenciosamente.
+ *
+ * Fora do Electron (navegador) sempre devolve `false`: atalho global não
+ * existe nesse ambiente.
+ */
+export async function registerMuteShortcut(accelerator: string | null): Promise<boolean> {
+  const api = getElectronAPI();
+  if (!api) return false;
+  return api.registerMuteShortcut(accelerator);
+}
+
+/** Escuta o atalho global disparando (ver registerMuteShortcut acima). Fora do Electron não faz nada. */
+export function onGlobalMuteToggle(callback: () => void): () => void {
+  const api = getElectronAPI();
+  if (!api) return () => {};
+  return api.onGlobalMuteToggle(callback);
 }

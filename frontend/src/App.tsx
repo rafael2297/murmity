@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import StartScreen from "./components/StartScreen";
 import LoginScreen from "./components/LoginScreen";
 import Workspace from "./components/Workspace";
@@ -8,7 +8,8 @@ import { UpdateProvider } from "./UpdateContext";
 import { SoundboardVolumeProvider } from "./SoundboardVolumeContext";
 import { ConfirmProvider } from "./ConfirmContext";
 import { AuthUser } from "./api";
-import { isEnvElectron } from "./host";
+import { isEnvElectron, registerMuteShortcut } from "./host";
+import { getGlobalMuteShortcut } from "./pushToTalkPrefs";
 
 interface Session {
   backendUrl: string;
@@ -52,6 +53,15 @@ export default function App() {
     setSession(null);
     setScreen(isEnvElectron() ? "start" : "login");
   }
+
+  // Reregistra o atalho global de mudo salvo (ver PushToTalkSettings.tsx)
+  // toda vez que o app abre — o `globalShortcut` do Electron não lembra
+  // sozinho entre uma abertura e outra do app, diferente do localStorage
+  // onde a preferência mora.
+  useEffect(() => {
+    const saved = getGlobalMuteShortcut();
+    if (saved) registerMuteShortcut(saved);
+  }, []);
 
   // UpdateProvider fica UMA vez aqui em cima, fora das telas condicionais
   // — assim o estado de atualização não se perde quando o usuário sai da

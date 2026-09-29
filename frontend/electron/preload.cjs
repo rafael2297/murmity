@@ -29,4 +29,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("request-close-choice", listener);
   },
   respondCloseChoice: (choice) => ipcRenderer.send("close-choice-response", choice),
+  // Atalho global de alternar mudo (ver PROJECT_CONTEXT.md — só alterna,
+  // não segura, porque o globalShortcut do Electron não tem evento de
+  // soltura). Passar null/undefined só desregistra, sem registrar nada.
+  registerMuteShortcut: (accelerator) => ipcRenderer.invoke("register-mute-shortcut", accelerator),
+  onGlobalMuteToggle: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("global-mute-toggle", listener);
+    return () => ipcRenderer.removeListener("global-mute-toggle", listener);
+  },
 });

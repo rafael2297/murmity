@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useMediaDeviceSelect } from "@livekit/components-react";
-import { X, User, SlidersHorizontal, Music4, Smile, LogOut } from "lucide-react";
+import { X, User, SlidersHorizontal, Music4, Smile, Keyboard, LogOut } from "lucide-react";
 import SoundboardManager from "./SoundboardManager";
 import SoundboardVolumeControl from "./SoundboardVolumeControl";
 import EmojiManager from "./EmojiManager";
+import PushToTalkSettings from "./PushToTalkSettings";
 import { useConfirm } from "../ConfirmContext";
 
 interface Props {
@@ -41,13 +42,14 @@ function DeviceSelect({ kind, label }: { kind: MediaDeviceKind; label: string })
   );
 }
 
-type Tab = "account" | "devices" | "soundboard" | "emojis";
+type Tab = "account" | "devices" | "soundboard" | "emojis" | "shortcuts";
 
 const TABS: { id: Tab; label: string; icon: typeof User }[] = [
   { id: "account", label: "Minha conta", icon: User },
   { id: "devices", label: "Dispositivos", icon: SlidersHorizontal },
   { id: "soundboard", label: "Soundboard", icon: Music4 },
   { id: "emojis", label: "Emojis", icon: Smile },
+  { id: "shortcuts", label: "Atalhos", icon: Keyboard },
 ];
 
 export default function SettingsModal({
@@ -154,6 +156,8 @@ export default function SettingsModal({
             {activeTab === "emojis" && (
               <EmojiManager backendUrl={backendUrl} username={username} />
             )}
+
+            {activeTab === "shortcuts" && <PushToTalkSettings />}
           </div>
         </div>
       </div>

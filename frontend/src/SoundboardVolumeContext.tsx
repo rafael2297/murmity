@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from "react";
+import { updateSoundboardMonitorVolume } from "./soundboard";
 
 const STORAGE_KEY = "soundboardVolume";
 const DEFAULT_VOLUME = 1; // 100%
@@ -40,6 +41,12 @@ export function SoundboardVolumeProvider({ children }: { children: ReactNode }) 
     const clamped = Math.min(1, Math.max(0, v));
     setVolumeState(clamped);
     localStorage.setItem(STORAGE_KEY, String(clamped));
+    // Aplica na hora em qualquer som SEU que já esteja tocando agora (não
+    // só nos próximos) — fica aqui, no Provider (sempre montado), em vez
+    // de em cada tela que mostra o slider, porque o som pode continuar
+    // tocando mesmo depois de fechar o painel/Configurações de onde ele
+    // foi disparado.
+    updateSoundboardMonitorVolume(clamped);
   }
 
   return (

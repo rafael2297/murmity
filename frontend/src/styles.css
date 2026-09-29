@@ -823,6 +823,82 @@ body {
   margin-top: 12px;
 }
 
+/* ---- Push-to-talk / atalho global (ver PushToTalkSettings.tsx) ---- */
+
+.settings-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+
+.push-to-talk-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcut-recorder {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shortcut-recorder-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid #3a3c41;
+  border-radius: 6px;
+  padding: 6px 12px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.shortcut-recorder-btn:hover {
+  background: var(--bg-hover);
+}
+
+.shortcut-recorder-btn.recording {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.shortcut-recorder-error {
+  font-size: 11px;
+  color: var(--danger);
+}
+
+/* Botões de texto pequenos das configurações de atalho (o .icon-btn é
+   pensado só pra ícone, com padding mínimo — não serve pra "Ativado"). */
+.ptt-toggle-btn,
+.ptt-remove-btn {
+  border: 1px solid #3a3c41;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.ptt-toggle-btn:hover,
+.ptt-remove-btn:hover {
+  background: var(--bg-hover);
+}
+
+.ptt-toggle-btn.on {
+  border-color: var(--accent);
+  background: rgba(88, 101, 242, 0.16);
+  color: var(--text-bright);
+}
+
+.ptt-remove-btn {
+  color: var(--danger);
+}
+
 .secondary-btn {
   background: #3a3c41;
   color: var(--text);
