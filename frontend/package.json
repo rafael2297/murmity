@@ -1,7 +1,7 @@
 {
   "name": "murmity-frontend",
   "private": true,
-  "version": "0.1.10",
+  "version": "1.9.1",
   "type": "module",
   "main": "electron/main.cjs",
   "repository": {
