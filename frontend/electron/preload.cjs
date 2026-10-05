@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   stopLiveKit: () => ipcRenderer.invoke("stop-livekit"),
   getDesktopSources: () => ipcRenderer.invoke("get-desktop-sources"),
   setScreenShareSource: (id) => ipcRenderer.invoke("set-screen-share-source", id),
+  canExcludeOwnAudio: () => ipcRenderer.invoke("can-exclude-own-audio"),
   focusWindow: () => ipcRenderer.invoke("focus-window"),
   onHostLog: (callback) => {
     const listener = (_event, line) => callback(line);
@@ -23,6 +24,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("update-status", listener);
   },
   installUpdate: () => ipcRenderer.invoke("install-update"),
+  getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   onRequestCloseChoice: (callback) => {
     const listener = () => callback();
     ipcRenderer.on("request-close-choice", listener);

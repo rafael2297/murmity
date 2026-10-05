@@ -1,0 +1,35 @@
+/* Indicador de quem está falando, no estilo do Discord (verde).
+   Usado na lista lateral (VoiceParticipants.tsx) e nos quadros da sala
+   (ParticipantGrid.tsx). Os seletores são um pouco mais "fortes" de
+   propósito, pra vencer o estilo padrão do LiveKit (azul) e o styles.css
+   independente da ordem em que os arquivos são carregados. */
+
+/* ---- Sala: contorno verde em volta do quadro de quem fala ---- */
+
+.lk-participant-tile.lk-participant-tile::after {
+  border-color: var(--online);
+  /* o padrão do LiveKit demora 0,5s pra começar a apagar — aqui é rápido */
+  transition: border-width 0.12s ease-out, box-shadow 0.12s ease-out;
+  transition-delay: 0.15s;
+}
+
+.lk-participant-tile.lk-participant-tile[data-lk-speaking="true"]:not([data-lk-source="screen_share"])::after {
+  border-width: 3px;
+  box-shadow: inset 0 0 14px rgba(35, 165, 90, 0.35);
+  transition-delay: 0s;
+}
+
+/* ---- Lateral: anel verde em volta do avatar de quem fala ---- */
+
+.voice-participant {
+  padding: 3px 0;
+}
+
+.voice-participant .user-avatar {
+  transition: box-shadow 0.1s ease-out;
+}
+
+.voice-participant .user-avatar.speaking-ring {
+  /* 1px de respiro (cor do fundo) + 2px de verde, como no Discord */
+  box-shadow: 0 0 0 1px var(--bg-secondary), 0 0 0 3px var(--online);
+}

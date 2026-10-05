@@ -1,18 +1,21 @@
-import { useEffect, useState, useSyncExternalStore, useRef } from "react";
-import { useParticipants, useRoomContext, useTracks } from "@livekit/components-react";
-import { RoomEvent, Participant, Track, RemoteAudioTrack, LocalParticipant } from "livekit-client";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { useIsSpeaking, useParticipants, useTracks } from "@livekit/components-react";
+import { Participant, Track, RemoteAudioTrack, LocalParticipant } from "livekit-client";
 import { MicOff, HeadphoneOff } from "lucide-react";
 import { getVolume, getEffectiveVolume, setVolume, toggleMute, subscribe } from "../localAudioPrefs";
+import "../speaking.css";
 
 interface RowProps {
   participant: Participant;
-  speaking: boolean;
   micTrack: Track | undefined;
   onContextMenu: (identity: string, x: number, y: number) => void;
 }
 
-function ParticipantRow({ participant, speaking, micTrack, onContextMenu }: RowProps) {
+function ParticipantRow({ participant, micTrack, onContextMenu }: RowProps) {
   const identity = participant.identity;
+  // Mesmo sinal que o LiveKit usa pra acender o contorno verde do quadro na
+  // sala (data-lk-speaking), então lateral e sala sempre concordam.
+  const speaking = useIsSpeaking(participant);
   const isLocal = participant instanceof LocalParticipant;
 
   const volume = useSyncExternalStore(subscribe, () => getVolume(identity));
@@ -108,8 +111,6 @@ function VolumeContextMenu({
 
 export default function VoiceParticipants() {
   const participants = useParticipants();
-  const room = useRoomContext();
-  const speakingStore = useSpeakingSet(room);
 
   const micTracks = useTracks([{ source: Track.Source.Microphone, withPlaceholder: false }], {
     onlySubscribed: true,
@@ -126,7 +127,6 @@ export default function VoiceParticipants() {
           <ParticipantRow
             key={p.identity}
             participant={p}
-            speaking={speakingStore.has(p.identity)}
             micTrack={micTrack}
             onContextMenu={(identity, x, y) => setMenu({ identity, x, y })}
           />
@@ -143,25 +143,4 @@ export default function VoiceParticipants() {
       )}
     </div>
   );
-}
-
-// Hook pequeno só pra isolar a assinatura do evento de "quem está falando".
-// useSyncExternalStore exige que getSnapshot devolva a MESMA referência
-// enquanto nada mudou de verdade — por isso o cache num ref, em vez de
-// criar um Set novo a cada chamada (isso causaria re-render infinito).
-function useSpeakingSet(room: ReturnType<typeof useRoomContext>): Set<string> {
-  const cacheRef = useRef(new Set(room.activeSpeakers.map((s) => s.identity)));
-
-  const subscribeSpeaking = (callback: () => void) => {
-    function handler(speakers: Participant[]) {
-      cacheRef.current = new Set(speakers.map((s) => s.identity));
-      callback();
-    }
-    room.on(RoomEvent.ActiveSpeakersChanged, handler);
-    return () => {
-      room.off(RoomEvent.ActiveSpeakersChanged, handler);
-    };
-  };
-
-  return useSyncExternalStore(subscribeSpeaking, () => cacheRef.current);
 }

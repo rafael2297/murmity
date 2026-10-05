@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMediaDeviceSelect } from "@livekit/components-react";
 import { X, User, SlidersHorizontal, Music4, Smile, Keyboard, LogOut } from "lucide-react";
 import SoundboardManager from "./SoundboardManager";
@@ -6,6 +6,7 @@ import SoundboardVolumeControl from "./SoundboardVolumeControl";
 import EmojiManager from "./EmojiManager";
 import PushToTalkSettings from "./PushToTalkSettings";
 import { useConfirm } from "../ConfirmContext";
+import { getAppVersion } from "../host";
 
 interface Props {
   onClose: () => void;
@@ -62,6 +63,11 @@ export default function SettingsModal({
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("account");
   const { confirm } = useConfirm();
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    getAppVersion().then(setAppVersion);
+  }, []);
 
   async function handleLogoutClick() {
     if (inCall) {
@@ -107,6 +113,12 @@ export default function SettingsModal({
             <LogOut size={16} />
             <span>Trocar de nome/servidor</span>
           </button>
+
+          {appVersion && (
+            <div className="device-select-note" style={{ margin: "8px 10px 0" }}>
+              Murmity v{appVersion}
+            </div>
+          )}
         </nav>
 
         <div className="settings-content">
@@ -123,6 +135,12 @@ export default function SettingsModal({
                 Logado como <strong>{username}</strong>
                 <br />
                 Servidor: {backendUrl}
+                {appVersion && (
+                  <>
+                    <br />
+                    Versão do app: v{appVersion}
+                  </>
+                )}
               </p>
             )}
 

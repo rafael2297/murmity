@@ -16,6 +16,11 @@ const VOLUME_PREFIX = "voiceVolume:";
 const LAST_VOLUME_PREFIX = "voiceVolumeLast:"; // lembra o volume de antes de mutar
 const SCREEN_AUDIO_MUTED_PREFIX = "screenAudioMuted:";
 
+// Guarda volumes originais dos participantes mutados PELO SHARE DE TELA
+// (chave = identity, valor = volume anterior). Só existe em memória durante
+// o share — ao parar, restaura e limpa.
+const screenShareMutedVolumes = new Map<string, number>();
+
 // Ensurdecer (deafen) é um estado global da call, não por participante —
 // por isso vive em memória (não no localStorage): é algo do tipo "agora,
 // nesta chamada", não uma preferência que deveria sobreviver a reiniciar
@@ -85,6 +90,44 @@ export function toggleScreenAudioMute(identity: string) {
   const next = !isScreenAudioMuted(identity);
   localStorage.setItem(SCREEN_AUDIO_MUTED_PREFIX + identity, next ? "1" : "0");
   notify();
+}
+
+/**
+ * Muta TODOS os participantes remotos localmente (volume = 0) quando o
+ * usuário inicia compartilhamento de tela COM ÁUDIO DO SISTEMA.
+ * Guarda os volumes anteriores em memória pra restaurar ao parar o share.
+ * Não afeta o que os outros ouvem — só o que VOCÊ ouve nos seus alto-falantes,
+ * evitando que o loopback capture a voz deles e cause eco.
+ *
+ * @param identities Lista de identities dos participantes remotos na call
+ * @returns Função de cleanup pra restaurar os volumes (chamar ao parar share)
+ */
+export function muteAllForScreenShare(identities: string[]): () => void {
+  screenShareMutedVolumes.clear();
+
+  for (const identity of identities) {
+    const currentVol = getVolume(identity);
+    if (currentVol > 0) {
+      screenShareMutedVolumes.set(identity, currentVol);
+      // Muta localmente (salva no localStorage + notifica UI)
+      setVolume(identity, 0);
+    }
+  }
+
+  // Retorna função pra restaurar
+  return () => {
+    for (const [identity, vol] of screenShareMutedVolumes) {
+      setVolume(identity, vol);
+    }
+    screenShareMutedVolumes.clear();
+  };
+}
+
+/**
+ * Verifica se há um muting ativo por screen share (pra UI mostrar indicador).
+ */
+export function isScreenShareMutingActive(): boolean {
+  return screenShareMutedVolumes.size > 0;
 }
 
 export function subscribe(listener: Listener): () => void {

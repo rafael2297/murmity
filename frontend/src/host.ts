@@ -18,6 +18,8 @@ interface ElectronAPI {
   onHostLog: (callback: (line: string) => void) => () => void;
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
   installUpdate: () => Promise<void>;
+  getAppVersion: () => Promise<string>;
+  canExcludeOwnAudio: () => Promise<boolean>;
   onRequestCloseChoice: (callback: () => void) => () => void;
   respondCloseChoice: (choice: CloseChoice) => void;
   registerMuteShortcut: (accelerator: string | null) => Promise<boolean>;
@@ -98,6 +100,28 @@ export function onUpdateStatus(callback: (status: UpdateStatus) => void): () => 
   const api = getElectronAPI();
   if (!api) return () => {};
   return api.onUpdateStatus(callback);
+}
+
+/**
+ * Este PC consegue compartilhar o áudio do sistema SEM o áudio do próprio
+ * Murmity? (Windows build 20348+ com Electron 43.4+.) Se não, quem
+ * compartilha precisa mutar os outros localmente pra ninguém se ouvir.
+ */
+export async function canExcludeOwnAudio(): Promise<boolean> {
+  try {
+    return (await getElectronAPI()?.canExcludeOwnAudio()) ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/** Versão instalada do app (ex: "1.9.1"). Fora do Electron devolve null. */
+export async function getAppVersion(): Promise<string | null> {
+  try {
+    return (await getElectronAPI()?.getAppVersion()) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** Fecha o app e instala a versão já baixada (o instalador reabre sozinho). */

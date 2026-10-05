@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, session, desktopCapturer, Tray, Menu, nativeImage, globalShortcut } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const os = require("os");
 const { spawn } = require("child_process");
 const { autoUpdater } = require("electron-updater");
@@ -32,6 +33,40 @@ function getResourcePath(name) {
   return path.join(base, name);
 }
 
+// Ícones da bandeja/janela ficam DENTRO de electron/icons/ (e não em
+// build-icons/) porque o electron-builder só empacota "dist/" e
+// "electron/" — a pasta build-icons/ não existe no app instalado, e era
+// por isso que o ícone da bandeja aparecia como um quadrado transparente.
+// Lemos o arquivo com fs (que entende o app.asar) e criamos a imagem a
+// partir do buffer, o que funciona igual em dev e empacotado.
+function loadIcon(fileName) {
+  try {
+    const buffer = fs.readFileSync(path.join(__dirname, "icons", fileName));
+    return nativeImage.createFromBuffer(buffer);
+  } catch (err) {
+    console.debug(`Não consegui carregar o ícone ${fileName}:`, err);
+    return nativeImage.createEmpty();
+  }
+}
+
+// Várias resoluções, pro Windows escolher a mais nítida conforme o zoom
+// (escala) da tela: 100% usa 16px, 150% usa 24px, 200% usa 32px, etc.
+function createTrayIcon() {
+  const icon = nativeImage.createEmpty();
+  const sizes = [
+    { file: "tray-16.png", scaleFactor: 1 },
+    { file: "tray-24.png", scaleFactor: 1.5 },
+    { file: "tray-32.png", scaleFactor: 2 },
+    { file: "tray-48.png", scaleFactor: 3 },
+  ];
+  for (const { file, scaleFactor } of sizes) {
+    const image = loadIcon(file);
+    if (image.isEmpty()) continue;
+    icon.addRepresentation({ scaleFactor, buffer: image.toPNG() });
+  }
+  return icon;
+}
+
 function sendToRenderer(channel, payload) {
   // Bug corrigido: ao fechar o app enquanto backend/LiveKit ainda estão de
   // pé, eles mandam umas últimas linhas de stdout/stderr DEPOIS da janela
@@ -55,7 +90,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 500,
     title: "Murmity",
-    icon: path.join(__dirname, "..", "build-icons", "icon.png"),
+    icon: loadIcon("app-256.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -98,9 +133,8 @@ function showWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, "..", "build-icons", "icon.png");
-  tray = new Tray(nativeImage.createFromPath(iconPath));
-  tray.setToolTip("Murmity");
+  tray = new Tray(createTrayIcon());
+  tray.setToolTip(`Murmity v${app.getVersion()}`);
 
   const contextMenu = Menu.buildFromTemplate([
     { label: "Abrir Murmity", click: showWindow },
@@ -166,6 +200,17 @@ ipcMain.handle("get-desktop-sources", async () => {
     // ScreenSharePicker.tsx), igual ao Discord.
     type: s.id.startsWith("screen:") ? "screen" : "window",
   }));
+});
+
+// O Electron 43.4+ só consegue tirar o áudio do próprio Murmity da captura do
+// sistema (para ninguém se ouvir de volta na tela compartilhada) usando a
+// "captura de áudio por processo" do Windows, que existe a partir do build
+// 20348 (Windows 11 e Windows 10 mais recentes). Em Windows mais antigo isso
+// não funciona, então o React cai no plano B (mutar os outros localmente).
+ipcMain.handle("can-exclude-own-audio", () => {
+  if (process.platform !== "win32") return false;
+  const build = Number(os.release().split(".")[2]);
+  return Number.isFinite(build) && build >= 20348;
 });
 
 ipcMain.handle("set-screen-share-source", (_event, sourceId) => {
@@ -291,9 +336,18 @@ ipcMain.on("close-choice-response", (_event, choice) => {
 
 // --- IPC: atualização (chamado pelo botão "Nova versão" no React) ---
 
+ipcMain.handle("get-app-version", () => app.getVersion());
+
 ipcMain.handle("install-update", () => {
   // Fecha o app e instala a versão já baixada — o instalador NSIS reabre
   // o app sozinho no final.
+  //
+  // isQuitting = true ANTES de fechar: sem isso, o "close" da janela cai
+  // no handler lá em cima e pergunta "minimizar ou fechar?" no meio da
+  // atualização. Também paramos backend/LiveKit antes, senão os .exe
+  // deles continuam abertos e o instalador reclama que o app está em uso.
+  isQuitting = true;
+  stopAllSidecars();
   autoUpdater.quitAndInstall();
 });
 
@@ -313,6 +367,9 @@ app.whenReady().then(() => {
       pendingScreenShareSourceId = null;
       // "loopback" pede o áudio do sistema (Windows) junto com o vídeo,
       // complementando o systemAudio:"include" pedido do lado do React.
+      // Como o React também pede { restrictOwnAudio: true }, o Electron
+      // 43.4+ troca isso por "loopbackWithoutChrome": todo o áudio do PC,
+      // MENOS o do próprio Murmity (vozes dos outros, soundboard etc.).
       callback({ video: chosen, audio: "loopback" });
     });
   });
@@ -351,6 +408,9 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  // Qualquer saída de verdade (atualização, desligar o Windows, "Sair" da
+  // bandeja) não deve cair no modal de "minimizar ou fechar".
+  isQuitting = true;
   stopAllSidecars();
   // globalShortcut.register fica registrado no SO até alguém desregistrar
   // — sem isso, fechar o app deixaria o atalho "preso" (nenhum outro

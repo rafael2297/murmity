@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ParticipantTile, useTracks } from "@livekit/components-react";
+import "../speaking.css";
 import type { TrackReferenceOrPlaceholder } from "@livekit/components-react";
 import { RemoteAudioTrack, Track } from "livekit-client";
 import { Minimize2, Users, EyeOff, MicOff, Volume2, VolumeX } from "lucide-react";

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocalParticipant, useRoomContext } from "@livekit/components-react";
+import { useLocalParticipant, useRoomContext, useParticipants } from "@livekit/components-react";
 import { ConnectionQuality, ParticipantEvent, Track } from "livekit-client";
 import { Video, VideoOff, ScreenShare, ScreenShareOff, PhoneOff, Music4 } from "lucide-react";
-import { isEnvElectron } from "../host";
+import { canExcludeOwnAudio, isEnvElectron } from "../host";
 import { useConfirm } from "../ConfirmContext";
 import ScreenSharePicker from "./ScreenSharePicker";
 import ScreenShareQualityPicker, { ScreenShareQuality, stepDownQuality } from "./ScreenShareQualityPicker";
 import SoundboardPanel from "./SoundboardPanel";
+import { muteAllForScreenShare } from "../localAudioPrefs";
 
 interface Props {
   backendUrl: string;
@@ -48,6 +49,8 @@ const MIN_BITRATE = 800_000; // piso de 800kbps — abaixo disso a imagem vira p
 export default function VoiceUserBar({ backendUrl, authToken, channelName }: Props) {
   const room = useRoomContext();
   const { localParticipant, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant();
+  // Participantes remotos pra mutar quando share com áudio inicia
+  const remoteParticipants = useParticipants().filter((p) => !p.isLocal);
   const { notifyInfo } = useConfirm();
   const [pickerMode, setPickerMode] = useState<"start" | "edit">("start");
   const [qualityMode, setQualityMode] = useState<"start" | "edit">("start");
@@ -66,6 +69,8 @@ export default function VoiceUserBar({ backendUrl, authToken, channelName }: Pro
   // recuperação gradual (quando a conexão melhora) se baseia.
   const activeBitrateRef = useRef<number | null>(null);
   const lastStepDownAtRef = useRef(0);
+  // Cleanup function pro auto-mute do screen share
+  const screenShareMuteCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     currentQualityRef.current = currentQuality;
@@ -76,6 +81,17 @@ export default function VoiceUserBar({ backendUrl, authToken, channelName }: Pro
   }
 
   async function applyScreenShare(quality: ScreenShareQuality) {
+    // O áudio do sistema é capturado SEM o áudio do próprio Murmity
+    // (restrictOwnAudio abaixo), então você continua ouvindo os outros e eles
+    // não se ouvem de volta. Só em PCs que não suportam isso (Windows mais
+    // antigo) cai no plano B: muta os outros localmente pra evitar o eco.
+    const ownAudioExcluded = await canExcludeOwnAudio();
+    if (!ownAudioExcluded && remoteParticipants.length > 0) {
+      const identities = remoteParticipants.map((p) => p.identity);
+      screenShareMuteCleanupRef.current = muteAllForScreenShare(identities);
+      notifyInfo("Seu Windows não consegue separar o áudio do Murmity do resto — o áudio dos outros ficou mutado localmente enquanto você compartilha, pra evitar eco pra quem assiste. Volta ao normal ao parar.");
+    }
+
     await localParticipant.setScreenShareEnabled(
       true,
       {
@@ -89,7 +105,9 @@ export default function VoiceUserBar({ backendUrl, authToken, channelName }: Pro
         // "compartilhar áudio" do Discord). No Electron, quem decide de
         // verdade é o main.cjs (audio: "loopback"); isso aqui é o pedido
         // do lado do navegador.
-        audio: true,
+        // restrictOwnAudio: captura o áudio do sistema MENOS o do próprio
+        // Murmity (o Electron 43.4+ traduz isso no main.cjs).
+        audio: { restrictOwnAudio: true },
         systemAudio: "include",
       },
       {
@@ -102,6 +120,11 @@ export default function VoiceUserBar({ backendUrl, authToken, channelName }: Pro
   }
 
   async function stopScreenShare() {
+    // Restaura volumes dos outros participantes que foram mutados pro share
+    if (screenShareMuteCleanupRef.current) {
+      screenShareMuteCleanupRef.current();
+      screenShareMuteCleanupRef.current = null;
+    }
     await localParticipant.setScreenShareEnabled(false);
     setCurrentQuality(undefined);
     activeBitrateRef.current = null;
