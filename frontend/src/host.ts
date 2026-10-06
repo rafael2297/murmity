@@ -20,6 +20,7 @@ interface ElectronAPI {
   installUpdate: () => Promise<void>;
   getAppVersion: () => Promise<string>;
   canExcludeOwnAudio: () => Promise<boolean>;
+  setScreenShareExcludeOwnAudio: (exclude: boolean) => Promise<void>;
   onRequestCloseChoice: (callback: () => void) => () => void;
   respondCloseChoice: (choice: CloseChoice) => void;
   registerMuteShortcut: (accelerator: string | null) => Promise<boolean>;
@@ -112,6 +113,15 @@ export async function canExcludeOwnAudio(): Promise<boolean> {
     return (await getElectronAPI()?.canExcludeOwnAudio()) ?? false;
   } catch {
     return false;
+  }
+}
+
+/** Avisa o Electron, antes de compartilhar a tela, se o áudio do sistema deve ir SEM o do Murmity. */
+export async function setScreenShareExcludeOwnAudio(exclude: boolean): Promise<void> {
+  try {
+    await getElectronAPI()?.setScreenShareExcludeOwnAudio(exclude);
+  } catch {
+    // sem Electron: nada a fazer
   }
 }
 

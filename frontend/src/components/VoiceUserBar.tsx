@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useLocalParticipant, useRoomContext, useParticipants } from "@livekit/components-react";
 import { ConnectionQuality, ParticipantEvent, Track } from "livekit-client";
 import { Video, VideoOff, ScreenShare, ScreenShareOff, PhoneOff, Music4 } from "lucide-react";
-import { canExcludeOwnAudio, isEnvElectron } from "../host";
+import { canExcludeOwnAudio, isEnvElectron, setScreenShareExcludeOwnAudio } from "../host";
+import { ownAudioLeaksIntoCapture } from "../ownAudioCheck";
 import { getExcludeOwnAudio } from "../screenShareAudioPrefs";
 import { useConfirm } from "../ConfirmContext";
 import ScreenSharePicker from "./ScreenSharePicker";
@@ -102,13 +103,15 @@ export default function VoiceUserBar({ backendUrl, authToken, channelName }: Pro
   async function applyScreenShare(quality: ScreenShareQuality) {
     // Plano B (padrão): muta os outros localmente pra evitar que o áudio do
     // sistema leve a voz deles de volta pra quem assiste (eco).
-    function muteOthersForShare() {
+    function muteOthersForShare(
+      message = "Áudio dos outros mutado localmente enquanto você compartilha tela com áudio — evita eco pra quem assiste. Volta ao normal ao parar."
+    ) {
       if (screenShareMuteCleanupRef.current) return;
       // Liga mesmo sem ninguém na sala agora: vale também pra quem entrar
       // durante o compartilhamento.
       screenShareMuteCleanupRef.current = muteAllForScreenShare();
       if (remoteParticipants.length > 0) {
-        notifyInfo("Áudio dos outros mutado localmente enquanto você compartilha tela com áudio — evita eco pra quem assiste. Volta ao normal ao parar.");
+        notifyInfo(message);
       }
     }
 
@@ -125,6 +128,9 @@ export default function VoiceUserBar({ backendUrl, authToken, channelName }: Pro
     if (!tryExcludeOwnAudio) muteOthersForShare();
 
     const startCapture = async (excludeOwnAudio: boolean) => {
+      // Quem escolhe "com ou sem o áudio do Murmity" é o main.cjs (device de
+      // loopback); aqui só avisamos a escolha antes de pedir a captura.
+      await setScreenShareExcludeOwnAudio(excludeOwnAudio);
       await localParticipant.setScreenShareEnabled(
       true,
       {
@@ -150,6 +156,7 @@ export default function VoiceUserBar({ backendUrl, authToken, channelName }: Pro
     );
     };
 
+    let exclusionActive = tryExcludeOwnAudio;
     try {
       await startCapture(tryExcludeOwnAudio);
     } catch (err) {
@@ -160,12 +167,34 @@ export default function VoiceUserBar({ backendUrl, authToken, channelName }: Pro
         throw err;
       }
       console.warn("Compartilhar sem o áudio do Murmity falhou; usando o modo normal:", err);
+      exclusionActive = false;
       muteOthersForShare();
       try {
         await startCapture(false);
       } catch (err2) {
         releaseMute();
         throw err2;
+      }
+    }
+
+    // Confere de verdade se o áudio do Murmity ficou fora da captura (toca um
+    // tom quase inaudível e vê se ele aparece). Se vazar, a voz dos outros
+    // iria pra quem assiste — então cai no plano B em vez de gerar eco.
+    if (exclusionActive) {
+      const captured = localParticipant.getTrackPublication(Track.Source.ScreenShareAudio)?.audioTrack
+        ?.mediaStreamTrack;
+      if (captured) {
+        let leaks = true; // se o teste falhar, assume o pior e protege contra eco
+        try {
+          leaks = await ownAudioLeaksIntoCapture(captured);
+        } catch (err) {
+          console.warn("Teste de exclusão do áudio próprio falhou:", err);
+        }
+        if (leaks) {
+          muteOthersForShare(
+            "Não deu pra separar o áudio do Murmity da captura neste PC — o áudio dos outros ficou mutado enquanto você compartilha, pra não gerar eco. Volta ao normal ao parar."
+          );
+        }
       }
     }
 

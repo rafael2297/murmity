@@ -89,6 +89,22 @@ export function isScreenAudioMuted(identity: string): boolean {
   return localStorage.getItem(SCREEN_AUDIO_MUTED_PREFIX + identity) === "1";
 }
 
+// Volume (0 a 1) do áudio da tela de cada pessoa — separado do mudo acima.
+const SCREEN_AUDIO_VOLUME_PREFIX = "screenAudioVolume:";
+
+export function getScreenAudioVolume(identity: string): number {
+  const raw = localStorage.getItem(SCREEN_AUDIO_VOLUME_PREFIX + identity);
+  if (raw === null) return 1;
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
+}
+
+export function setScreenAudioVolume(identity: string, volume: number) {
+  const clamped = Math.min(1, Math.max(0, volume));
+  localStorage.setItem(SCREEN_AUDIO_VOLUME_PREFIX + identity, String(clamped));
+  notify();
+}
+
 export function toggleScreenAudioMute(identity: string) {
   const next = !isScreenAudioMuted(identity);
   localStorage.setItem(SCREEN_AUDIO_MUTED_PREFIX + identity, next ? "1" : "0");

@@ -1,15 +1,16 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ParticipantTile, useTracks } from "@livekit/components-react";
 import "../speaking.css";
+import "../screenAudio.css";
 import type { TrackReferenceOrPlaceholder } from "@livekit/components-react";
-import { RemoteAudioTrack, Track } from "livekit-client";
+import { Track } from "livekit-client";
 import { Minimize2, Users, EyeOff, MicOff, Volume2, VolumeX } from "lucide-react";
 import {
+  getScreenAudioVolume,
   getVolume,
   isScreenAudioMuted,
+  setScreenAudioVolume,
   toggleScreenAudioMute,
-  isDeafened,
-  isScreenShareMutingActive,
   subscribe,
 } from "../localAudioPrefs";
 
@@ -36,52 +37,38 @@ function MutedBadge({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
 function ScreenAudioButton({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
   const identity = trackRef.participant.identity;
   const screenMuted = useSyncExternalStore(subscribe, () => isScreenAudioMuted(identity));
+  const volume = useSyncExternalStore(subscribe, () => getScreenAudioVolume(identity));
+  const shownVolume = screenMuted ? 0 : volume;
 
   return (
-    <button
-      className={`tile-audio-btn ${screenMuted ? "muted" : ""}`}
-      title={
-        screenMuted
-          ? `Áudio desta tela mutado — clique pra ouvir`
-          : `Mutar o áudio desta tela (continua ouvindo a voz de ${identity})`
-      }
-      onClick={(e) => {
-        e.stopPropagation();
-        toggleScreenAudioMute(identity);
-      }}
-    >
-      {screenMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-    </button>
+    <div className="tile-audio-control" onClick={(e) => e.stopPropagation()}>
+      <button
+        className={`tile-audio-btn ${screenMuted || volume === 0 ? "muted" : ""}`}
+        title={
+          screenMuted
+            ? `Áudio desta tela mutado — clique pra ouvir`
+            : `Mutar o áudio desta tela (continua ouvindo a voz de ${identity})`
+        }
+        onClick={() => toggleScreenAudioMute(identity)}
+      >
+        {shownVolume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+      </button>
+      <input
+        className="tile-audio-slider"
+        type="range"
+        min={0}
+        max={100}
+        value={Math.round(shownVolume * 100)}
+        title={`Volume da tela: ${Math.round(shownVolume * 100)}%`}
+        onChange={(e) => {
+          const next = Number(e.target.value) / 100;
+          setScreenAudioVolume(identity, next);
+          // Mexer no volume com a tela mutada = quer ouvir de novo.
+          if (screenMuted && next > 0) toggleScreenAudioMute(identity);
+        }}
+      />
+    </div>
   );
-}
-
-// O botão da tela guarda a preferência por participante em localAudioPrefs.
-// Esta ponte é o que a aplica de fato na track remota entregue pelo LiveKit.
-// Mantemos separado do áudio do microfone para poder silenciar o jogo/vídeo
-// compartilhado sem deixar de ouvir a voz da mesma pessoa.
-function ScreenShareAudioController({
-  identity,
-  audioTrack,
-}: {
-  identity: string;
-  audioTrack: Track | undefined;
-}) {
-  const muted = useSyncExternalStore(subscribe, () => isScreenAudioMuted(identity));
-  // Ensurdecer silencia TUDO que vem de fora, incluindo o áudio da tela
-  // compartilhada — sem mexer na preferência de mute daquela tela, que
-  // volta a valer sozinha assim que a pessoa desensurdecer.
-  const deafened = useSyncExternalStore(subscribe, () => isDeafened());
-  // Enquanto VOCÊ compartilha com o áudio do sistema inteiro (plano B de
-  // eco), o áudio de tela dos outros também fica mudo.
-  const shareMuting = useSyncExternalStore(subscribe, () => isScreenShareMutingActive());
-
-  useEffect(() => {
-    if (audioTrack instanceof RemoteAudioTrack) {
-      audioTrack.setVolume(muted || deafened || shareMuting ? 0 : 1);
-    }
-  }, [audioTrack, muted, deafened, shareMuting]);
-
-  return null;
 }
 
 function ClickableTile({
@@ -113,14 +100,6 @@ export default function ParticipantGrid() {
     { onlySubscribed: false }
   );
 
-  // ScreenShare e ScreenShareAudio são publications diferentes no LiveKit.
-  // A grade usa só o vídeo, mas precisamos observar a track de áudio também
-  // para que o mute da transmissão seja real, e não apenas visual.
-  const screenAudioTracks = useTracks(
-    [{ source: Track.Source.ScreenShareAudio, withPlaceholder: false }],
-    { onlySubscribed: true }
-  );
-
   const hasScreenShare = tracks.some((t) => t.source === Track.Source.ScreenShare);
 
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
@@ -133,14 +112,6 @@ export default function ParticipantGrid() {
   const [hideParticipants, setHideParticipants] = useState(false);
 
   const focusedTrack = focusedKey ? tracks.find((t) => trackKey(t) === focusedKey) ?? null : null;
-  const screenAudioControllers = screenAudioTracks.map((trackRef) => (
-    <ScreenShareAudioController
-      key={trackKey(trackRef)}
-      identity={trackRef.participant.identity}
-      audioTrack={trackRef.publication?.track}
-    />
-  ));
-
   // Se a pessoa que você focou parar de compartilhar/sair, volta sozinho
   // pra grade em vez de ficar numa tela quebrada.
   useEffect(() => {
@@ -153,7 +124,6 @@ export default function ParticipantGrid() {
     const others = tracks.filter((t) => trackKey(t) !== focusedKey);
     return (
       <>
-        {screenAudioControllers}
         <div className="focus-view">
           <div className="focus-toolbar">
             <button className="unfocus-btn" onClick={() => setFocusedKey(null)}>
@@ -197,7 +167,6 @@ export default function ParticipantGrid() {
 
   return (
     <>
-      {screenAudioControllers}
       <div className="participant-grid-wrapper">
         {hasScreenShare && (
           <div className="focus-toolbar">

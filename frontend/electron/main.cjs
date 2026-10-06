@@ -10,6 +10,7 @@ let tray = null;
 let backendProcess = null;
 let livekitProcess = null;
 let pendingScreenShareSourceId = null;
+let pendingScreenShareExcludeOwnAudio = false;
 // Atalho global de alternar mudo (Ctrl+Shift+M por padrão, configurável
 // nas Configurações → Atalhos). Só existe UM por vez — trocar de atalho
 // significa desregistrar este antes de registrar o novo.
@@ -268,6 +269,12 @@ function windowsSupportsOwnAudioExclusion() {
 
 ipcMain.handle("can-exclude-own-audio", () => windowsSupportsOwnAudioExclusion());
 
+// O React avisa, antes de compartilhar, se quer o áudio do sistema SEM o do
+// Murmity. Usado (e zerado) no handler de captura mais abaixo.
+ipcMain.handle("set-screen-share-exclude-own-audio", (_event, exclude) => {
+  pendingScreenShareExcludeOwnAudio = Boolean(exclude);
+});
+
 ipcMain.handle("set-screen-share-source", (_event, sourceId) => {
   pendingScreenShareSourceId = sourceId;
 });
@@ -422,10 +429,15 @@ app.whenReady().then(() => {
       pendingScreenShareSourceId = null;
       // "loopback" pede o áudio do sistema (Windows) junto com o vídeo,
       // complementando o systemAudio:"include" pedido do lado do React.
-      // Quando o React pede { restrictOwnAudio: true }, o Electron 43.4+
-      // troca isso por "loopbackWithoutChrome": todo o áudio do PC, MENOS o
-      // do próprio Murmity (vozes dos outros, soundboard etc.).
-      callback({ video: chosen, audio: "loopback" });
+      // "loopbackWithoutChrome" é o mesmo, mas SEM o áudio do próprio Murmity
+      // (vozes dos outros, soundboard etc.) — é o que o Vesktop/Discord fazem.
+      // Pedimos o dispositivo explicitamente (em vez de só confiar no
+      // restrictOwnAudio do navegador) porque foi o que já se provou
+      // funcionar no Windows 10 22H2+ e no 11.
+      const excludeOwnAudio =
+        pendingScreenShareExcludeOwnAudio && windowsSupportsOwnAudioExclusion();
+      pendingScreenShareExcludeOwnAudio = false;
+      callback({ video: chosen, audio: excludeOwnAudio ? "loopbackWithoutChrome" : "loopback" });
     });
   });
 

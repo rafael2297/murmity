@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getDesktopSources: () => ipcRenderer.invoke("get-desktop-sources"),
   setScreenShareSource: (id) => ipcRenderer.invoke("set-screen-share-source", id),
   canExcludeOwnAudio: () => ipcRenderer.invoke("can-exclude-own-audio"),
+  setScreenShareExcludeOwnAudio: (exclude) =>
+    ipcRenderer.invoke("set-screen-share-exclude-own-audio", exclude),
   focusWindow: () => ipcRenderer.invoke("focus-window"),
   onHostLog: (callback) => {
     const listener = (_event, line) => callback(line);

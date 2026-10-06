@@ -1,5 +1,51 @@
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Track } from "livekit-client";
 import { useTracks, AudioTrack } from "@livekit/components-react";
+import {
+  getEffectiveVolume,
+  getScreenAudioVolume,
+  isDeafened,
+  isScreenAudioMuted,
+  isScreenShareMutingActive,
+  subscribe,
+} from "../localAudioPrefs";
+
+// "trackRef" é opcional no AudioTrack; aqui ele é sempre obrigatório.
+type TrackRef = NonNullable<React.ComponentProps<typeof AudioTrack>["trackRef"]>;
+
+// Toca UMA track remota e é o dono do volume dela. Além do volume, liga o
+// "muted" do próprio <audio>: o setVolume(0) do LiveKit ignora o 0 quando o
+// elemento é criado depois dele (e só era aplicado com a grade da chamada
+// aberta) — era por isso que o mute do compartilhamento era "só visual".
+function PlayedAudio({ trackRef, volume }: { trackRef: TrackRef; volume: number }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const silent = volume === 0;
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.muted = silent;
+  });
+  return <AudioTrack ref={audioRef} trackRef={trackRef} volume={volume} />;
+}
+
+function MicAudio({ trackRef }: { trackRef: TrackRef }) {
+  const identity = trackRef.participant.identity;
+  // Já considera ensurdecido e o mute temporário do compartilhamento.
+  const volume = useSyncExternalStore(subscribe, () => getEffectiveVolume(identity));
+  return <PlayedAudio trackRef={trackRef} volume={volume} />;
+}
+
+function ScreenAudio({ trackRef }: { trackRef: TrackRef }) {
+  const identity = trackRef.participant.identity;
+  const mutedByUser = useSyncExternalStore(subscribe, () => isScreenAudioMuted(identity));
+  const deafened = useSyncExternalStore(subscribe, () => isDeafened());
+  const shareMuting = useSyncExternalStore(subscribe, () => isScreenShareMutingActive());
+  const userVolume = useSyncExternalStore(subscribe, () => getScreenAudioVolume(identity));
+  return (
+    <PlayedAudio
+      trackRef={trackRef}
+      volume={mutedByUser || deafened || shareMuting ? 0 : userVolume}
+    />
+  );
+}
 
 /**
  * Substitui o <RoomAudioRenderer /> padrão da lib.
@@ -30,9 +76,14 @@ export default function VoiceAudioRenderer() {
 
   return (
     <div style={{ display: "none" }}>
-      {tracks.map((t) => (
-        <AudioTrack key={`${t.participant.identity}-${t.publication.trackSid}`} trackRef={t} />
-      ))}
+      {tracks.map((t) => {
+        const key = `${t.participant.identity}-${t.publication.trackSid}`;
+        return t.source === Track.Source.ScreenShareAudio ? (
+          <ScreenAudio key={key} trackRef={t} />
+        ) : (
+          <MicAudio key={key} trackRef={t} />
+        );
+      })}
     </div>
   );
 }

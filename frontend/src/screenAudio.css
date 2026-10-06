@@ -1,0 +1,41 @@
+/* Controle de áudio da tela compartilhada (botão de mudo + volume) que
+   aparece no canto do quadro de quem transmite. O controle de volume abre
+   quando o mouse passa por cima, como no Discord. */
+
+.tile-audio-control {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  border-radius: 18px;
+  transition: background 0.15s;
+}
+
+.tile-audio-control:hover,
+.tile-audio-control:focus-within {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+/* O botão deixa de ser posicionado sozinho: quem posiciona é o grupo. */
+.tile-audio-control .tile-audio-btn {
+  position: static;
+}
+
+.tile-audio-slider {
+  width: 0;
+  opacity: 0;
+  margin: 0;
+  overflow: hidden;
+  accent-color: var(--accent);
+  cursor: pointer;
+  transition: width 0.15s ease-out, opacity 0.15s ease-out, margin 0.15s ease-out;
+}
+
+.tile-audio-control:hover .tile-audio-slider,
+.tile-audio-control:focus-within .tile-audio-slider {
+  width: 96px;
+  opacity: 1;
+  margin: 0 12px 0 6px;
+}
