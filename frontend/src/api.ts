@@ -52,7 +52,7 @@ export interface GifResult {
 
 export interface UploadedAttachment {
   url: string;
-  type: "image" | "audio";
+  type: "image" | "audio" | "video" | "file";
   name: string;
 }
 
@@ -279,7 +279,7 @@ export async function searchGifs(
 export async function uploadAttachment(
   backendUrl: string,
   authToken: string,
-  kind: "image" | "audio",
+  kind: "image" | "audio" | "video" | "file",
   file: File
 ): Promise<UploadedAttachment> {
   const params = new URLSearchParams({ kind, filename: file.name });

@@ -3,6 +3,7 @@ import { useLocalParticipant, useRoomContext, useParticipants } from "@livekit/c
 import { ConnectionQuality, ParticipantEvent, Track } from "livekit-client";
 import { Video, VideoOff, ScreenShare, ScreenShareOff, PhoneOff, Music4 } from "lucide-react";
 import { canExcludeOwnAudio, isEnvElectron } from "../host";
+import { getExcludeOwnAudio } from "../screenShareAudioPrefs";
 import { useConfirm } from "../ConfirmContext";
 import ScreenSharePicker from "./ScreenSharePicker";
 import ScreenShareQualityPicker, { ScreenShareQuality, stepDownQuality } from "./ScreenShareQualityPicker";
@@ -72,6 +73,24 @@ export default function VoiceUserBar({ backendUrl, authToken, channelName }: Pro
   // Cleanup function pro auto-mute do screen share
   const screenShareMuteCleanupRef = useRef<(() => void) | null>(null);
 
+  // O mute temporário do compartilhamento NUNCA pode ficar preso: se o
+  // compartilhamento acabar por qualquer motivo (botão, "parar" do sistema,
+  // queda) ou o componente sair da tela, desliga.
+  useEffect(() => {
+    if (!isScreenShareEnabled && screenShareMuteCleanupRef.current) {
+      screenShareMuteCleanupRef.current();
+      screenShareMuteCleanupRef.current = null;
+    }
+  }, [isScreenShareEnabled]);
+
+  useEffect(
+    () => () => {
+      screenShareMuteCleanupRef.current?.();
+      screenShareMuteCleanupRef.current = null;
+    },
+    []
+  );
+
   useEffect(() => {
     currentQualityRef.current = currentQuality;
   }, [currentQuality]);
@@ -81,18 +100,32 @@ export default function VoiceUserBar({ backendUrl, authToken, channelName }: Pro
   }
 
   async function applyScreenShare(quality: ScreenShareQuality) {
-    // O áudio do sistema é capturado SEM o áudio do próprio Murmity
-    // (restrictOwnAudio abaixo), então você continua ouvindo os outros e eles
-    // não se ouvem de volta. Só em PCs que não suportam isso (Windows mais
-    // antigo) cai no plano B: muta os outros localmente pra evitar o eco.
-    const ownAudioExcluded = await canExcludeOwnAudio();
-    if (!ownAudioExcluded && remoteParticipants.length > 0) {
-      const identities = remoteParticipants.map((p) => p.identity);
-      screenShareMuteCleanupRef.current = muteAllForScreenShare(identities);
-      notifyInfo("Seu Windows não consegue separar o áudio do Murmity do resto — o áudio dos outros ficou mutado localmente enquanto você compartilha, pra evitar eco pra quem assiste. Volta ao normal ao parar.");
+    // Plano B (padrão): muta os outros localmente pra evitar que o áudio do
+    // sistema leve a voz deles de volta pra quem assiste (eco).
+    function muteOthersForShare() {
+      if (screenShareMuteCleanupRef.current) return;
+      // Liga mesmo sem ninguém na sala agora: vale também pra quem entrar
+      // durante o compartilhamento.
+      screenShareMuteCleanupRef.current = muteAllForScreenShare();
+      if (remoteParticipants.length > 0) {
+        notifyInfo("Áudio dos outros mutado localmente enquanto você compartilha tela com áudio — evita eco pra quem assiste. Volta ao normal ao parar.");
+      }
     }
 
-    await localParticipant.setScreenShareEnabled(
+    const releaseMute = () => {
+      screenShareMuteCleanupRef.current?.();
+      screenShareMuteCleanupRef.current = null;
+    };
+
+    // Captura o áudio do sistema SEM o do próprio Murmity (como o Discord):
+    // você continua ouvindo todo mundo e quem assiste não se ouve de volta.
+    // Vale se a opção (Configurações → Dispositivos) estiver ligada — é o
+    // padrão — E o Windows suportar; senão cai no plano B acima.
+    const tryExcludeOwnAudio = getExcludeOwnAudio() && (await canExcludeOwnAudio());
+    if (!tryExcludeOwnAudio) muteOthersForShare();
+
+    const startCapture = async (excludeOwnAudio: boolean) => {
+      await localParticipant.setScreenShareEnabled(
       true,
       {
         // contentHint "motion" evita a sensação de lag em conteúdo com
@@ -105,9 +138,9 @@ export default function VoiceUserBar({ backendUrl, authToken, channelName }: Pro
         // "compartilhar áudio" do Discord). No Electron, quem decide de
         // verdade é o main.cjs (audio: "loopback"); isso aqui é o pedido
         // do lado do navegador.
-        // restrictOwnAudio: captura o áudio do sistema MENOS o do próprio
-        // Murmity (o Electron 43.4+ traduz isso no main.cjs).
-        audio: { restrictOwnAudio: true },
+        // restrictOwnAudio: áudio do sistema MENOS o do próprio Murmity (o
+        // Electron 43.4+ traduz isso no main.cjs). Falso = áudio do sistema todo.
+        audio: excludeOwnAudio ? { restrictOwnAudio: true } : true,
         systemAudio: "include",
       },
       {
@@ -115,6 +148,27 @@ export default function VoiceUserBar({ backendUrl, authToken, channelName }: Pro
         simulcast: false,
       }
     );
+    };
+
+    try {
+      await startCapture(tryExcludeOwnAudio);
+    } catch (err) {
+      // Se o modo experimental não funcionou neste PC, volta pro jeito normal
+      // em vez de deixar a pessoa sem compartilhar.
+      if (!tryExcludeOwnAudio) {
+        releaseMute();
+        throw err;
+      }
+      console.warn("Compartilhar sem o áudio do Murmity falhou; usando o modo normal:", err);
+      muteOthersForShare();
+      try {
+        await startCapture(false);
+      } catch (err2) {
+        releaseMute();
+        throw err2;
+      }
+    }
+
     setCurrentQuality(quality);
     activeBitrateRef.current = quality.maxBitrate;
   }

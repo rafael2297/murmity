@@ -118,6 +118,14 @@ function createWindow() {
     sendToRenderer("request-close-choice", null);
   });
 
+  // Se um arquivo for solto numa tela do app que não trata o "soltar", o
+  // Chromium tentaria ABRIR o arquivo e trocaria a página do app por ele
+  // (sumindo com a interface). Bloqueia qualquer navegação pra fora da
+  // página atual — o chat trata o drop de arquivos por conta própria.
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (url !== mainWindow.webContents.getURL()) event.preventDefault();
+  });
+
   if (isDev) {
     mainWindow.loadURL("http://localhost:5173");
   } else {
@@ -167,6 +175,47 @@ function stopAllSidecars() {
   }
 }
 
+// Roda o taskkill do Windows e espera ele terminar (ignora erro: "processo
+// não encontrado" também é um resultado ok pra gente).
+function runTaskkill(args) {
+  return new Promise((resolve) => {
+    const child = spawn("taskkill", args, { windowsHide: true, stdio: "ignore" });
+    const timer = setTimeout(resolve, 3000);
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    child.on("error", done);
+    child.on("exit", done);
+  });
+}
+
+// Versão de stopAllSidecars() que ESPERA os processos realmente morrerem.
+// O kill() simples só pede pra encerrar e volta na hora — como o instalador
+// da atualização abre logo em seguida, o murmity-backend.exe e o
+// livekit-server.exe ainda podiam estar abertos e travar a troca dos
+// arquivos (a atualização falhava e o app abria na versão antiga).
+async function stopAllSidecarsAndWait() {
+  const procs = [backendProcess, livekitProcess].filter(Boolean);
+  backendProcess = null;
+  livekitProcess = null;
+
+  if (process.platform === "win32") {
+    for (const proc of procs) {
+      if (proc.pid) await runTaskkill(["/PID", String(proc.pid), "/T", "/F"]);
+    }
+    // Garantia extra: sobra de uma execução anterior (ex: app que fechou
+    // de forma inesperada) também trava a instalação.
+    await runTaskkill(["/IM", "murmity-backend.exe", "/T", "/F"]);
+    await runTaskkill(["/IM", "livekit-server.exe", "/T", "/F"]);
+  } else {
+    procs.forEach((proc) => proc.kill());
+  }
+
+  // Dá um respiro pro Windows liberar os arquivos.
+  await new Promise((resolve) => setTimeout(resolve, 800));
+}
+
 async function waitForHealth(url, timeoutMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -202,16 +251,22 @@ ipcMain.handle("get-desktop-sources", async () => {
   }));
 });
 
-// O Electron 43.4+ só consegue tirar o áudio do próprio Murmity da captura do
-// sistema (para ninguém se ouvir de volta na tela compartilhada) usando a
-// "captura de áudio por processo" do Windows, que existe a partir do build
-// 20348 (Windows 11 e Windows 10 mais recentes). Em Windows mais antigo isso
-// não funciona, então o React cai no plano B (mutar os outros localmente).
-ipcMain.handle("can-exclude-own-audio", () => {
+// Tirar o áudio do próprio Murmity da captura do sistema (pra ninguém se
+// ouvir de volta na tela compartilhada) usa a "captura de áudio por
+// processo" do Windows. Ela funciona no Windows 10 22H2 (build 19045) e no
+// Windows 11 — mesmo critério usado por apps como o Vesktop, que testaram:
+// no build 19041 essa captura falha. Em Windows mais antigo o React cai no
+// plano B (mutar os outros localmente). Quem pede a exclusão é o React, com
+// audio: { restrictOwnAudio: true } — o Electron 43.4+ traduz isso sozinho.
+const MIN_WINDOWS_BUILD_OWN_AUDIO_EXCLUSION = 19045;
+
+function windowsSupportsOwnAudioExclusion() {
   if (process.platform !== "win32") return false;
   const build = Number(os.release().split(".")[2]);
-  return Number.isFinite(build) && build >= 20348;
-});
+  return Number.isFinite(build) && build >= MIN_WINDOWS_BUILD_OWN_AUDIO_EXCLUSION;
+}
+
+ipcMain.handle("can-exclude-own-audio", () => windowsSupportsOwnAudioExclusion());
 
 ipcMain.handle("set-screen-share-source", (_event, sourceId) => {
   pendingScreenShareSourceId = sourceId;
@@ -338,7 +393,7 @@ ipcMain.on("close-choice-response", (_event, choice) => {
 
 ipcMain.handle("get-app-version", () => app.getVersion());
 
-ipcMain.handle("install-update", () => {
+ipcMain.handle("install-update", async () => {
   // Fecha o app e instala a versão já baixada — o instalador NSIS reabre
   // o app sozinho no final.
   //
@@ -347,7 +402,7 @@ ipcMain.handle("install-update", () => {
   // atualização. Também paramos backend/LiveKit antes, senão os .exe
   // deles continuam abertos e o instalador reclama que o app está em uso.
   isQuitting = true;
-  stopAllSidecars();
+  await stopAllSidecarsAndWait();
   autoUpdater.quitAndInstall();
 });
 
@@ -367,9 +422,9 @@ app.whenReady().then(() => {
       pendingScreenShareSourceId = null;
       // "loopback" pede o áudio do sistema (Windows) junto com o vídeo,
       // complementando o systemAudio:"include" pedido do lado do React.
-      // Como o React também pede { restrictOwnAudio: true }, o Electron
-      // 43.4+ troca isso por "loopbackWithoutChrome": todo o áudio do PC,
-      // MENOS o do próprio Murmity (vozes dos outros, soundboard etc.).
+      // Quando o React pede { restrictOwnAudio: true }, o Electron 43.4+
+      // troca isso por "loopbackWithoutChrome": todo o áudio do PC, MENOS o
+      // do próprio Murmity (vozes dos outros, soundboard etc.).
       callback({ video: chosen, audio: "loopback" });
     });
   });
@@ -379,6 +434,30 @@ app.whenReady().then(() => {
   // do Windows), escutamos os eventos e mandamos pro React — assim o
   // aviso é um elemento dentro do próprio app (seta verde "Nova versão",
   // ver UpdateBanner.tsx), não uma notificação do sistema.
+  // Log do atualizador em arquivo (updater.log, dentro da pasta de dados do
+  // app em %APPDATA%) — se uma atualização falhar de novo, dá pra ver o motivo.
+  const updaterLogPath = path.join(app.getPath("userData"), "updater.log");
+  const writeUpdaterLog = (level, message) => {
+    try {
+      const text =
+        message instanceof Error
+          ? message.stack || message.message
+          : typeof message === "string"
+            ? message
+            : JSON.stringify(message);
+      fs.appendFileSync(updaterLogPath, `[${new Date().toISOString()}] ${level} ${text}\n`);
+    } catch {
+      // log nunca pode derrubar o app
+    }
+  };
+  autoUpdater.logger = {
+    info: (message) => writeUpdaterLog("INFO", message),
+    warn: (message) => writeUpdaterLog("WARN", message),
+    error: (message) => writeUpdaterLog("ERROR", message),
+    debug: (message) => writeUpdaterLog("DEBUG", message),
+  };
+  writeUpdaterLog("INFO", `Murmity v${app.getVersion()} iniciado — checando atualização`);
+
   autoUpdater.on("update-available", (info) => {
     sendLog(`Atualização disponível: v${info.version} — baixando em segundo plano...`);
     sendToRenderer("update-status", { status: "available", version: info.version });

@@ -16,10 +16,13 @@ const VOLUME_PREFIX = "voiceVolume:";
 const LAST_VOLUME_PREFIX = "voiceVolumeLast:"; // lembra o volume de antes de mutar
 const SCREEN_AUDIO_MUTED_PREFIX = "screenAudioMuted:";
 
-// Guarda volumes originais dos participantes mutados PELO SHARE DE TELA
-// (chave = identity, valor = volume anterior). Só existe em memória durante
-// o share — ao parar, restaura e limpa.
-const screenShareMutedVolumes = new Map<string, number>();
+// Plano B de eco ao compartilhar a tela: enquanto está ligado, TODO áudio
+// vindo dos outros toca com volume 0 — mas isso é só um "interruptor"
+// temporário em memória, que NÃO mexe no volume salvo de ninguém. Antes o
+// volume salvo (localStorage) era zerado e restaurado depois; se o app
+// fechasse no meio do compartilhamento, a pessoa ficava gravada como
+// "mutada" pra sempre (era o "aparece mutada mesmo não estando").
+let screenShareMuting = false;
 
 // Ensurdecer (deafen) é um estado global da call, não por participante —
 // por isso vive em memória (não no localStorage): é algo do tipo "agora,
@@ -54,7 +57,7 @@ export function getVolume(identity: string): number {
 // sem apagar a preferência individual salva — ao desensurdecer, cada
 // um volta a tocar no volume que já estava configurado antes.
 export function getEffectiveVolume(identity: string): number {
-  return deafened ? 0 : getVolume(identity);
+  return deafened || screenShareMuting ? 0 : getVolume(identity);
 }
 
 export function isMuted(identity: string): boolean {
@@ -93,42 +96,51 @@ export function toggleScreenAudioMute(identity: string) {
 }
 
 /**
- * Muta TODOS os participantes remotos localmente (volume = 0) quando o
- * usuário inicia compartilhamento de tela COM ÁUDIO DO SISTEMA.
- * Guarda os volumes anteriores em memória pra restaurar ao parar o share.
- * Não afeta o que os outros ouvem — só o que VOCÊ ouve nos seus alto-falantes,
- * evitando que o loopback capture a voz deles e cause eco.
+ * Plano B de eco: enquanto você compartilha a tela com o áudio do sistema
+ * inteiro (Windows que não separa o áudio do Murmity), tudo que vem dos
+ * outros toca com volume 0 pra a voz deles não voltar pra quem assiste.
+ * Vale também pra quem entrar no meio do compartilhamento. Não altera o
+ * volume salvo de ninguém e não afeta o que os outros ouvem.
  *
- * @param identities Lista de identities dos participantes remotos na call
- * @returns Função de cleanup pra restaurar os volumes (chamar ao parar share)
+ * @returns Função pra desligar (chamar ao parar o compartilhamento)
  */
-export function muteAllForScreenShare(identities: string[]): () => void {
-  screenShareMutedVolumes.clear();
-
-  for (const identity of identities) {
-    const currentVol = getVolume(identity);
-    if (currentVol > 0) {
-      screenShareMutedVolumes.set(identity, currentVol);
-      // Muta localmente (salva no localStorage + notifica UI)
-      setVolume(identity, 0);
-    }
-  }
-
-  // Retorna função pra restaurar
+export function muteAllForScreenShare(_identities?: string[]): () => void {
+  screenShareMuting = true;
+  notify();
   return () => {
-    for (const [identity, vol] of screenShareMutedVolumes) {
-      setVolume(identity, vol);
-    }
-    screenShareMutedVolumes.clear();
+    screenShareMuting = false;
+    notify();
   };
 }
 
 /**
- * Verifica se há um muting ativo por screen share (pra UI mostrar indicador).
+ * Verifica se o mute do compartilhamento de tela está ativo.
  */
 export function isScreenShareMutingActive(): boolean {
-  return screenShareMutedVolumes.size > 0;
+  return screenShareMuting;
 }
+
+// Conserto único: versões anteriores gravavam volume 0 (mutado) quando você
+// compartilhava a tela e não restauravam se o app fechasse no meio. Isso
+// deixava gente "mutada" sem você ter mutado. Na primeira execução desta
+// versão, volta quem estiver em 0 para o último volume conhecido (ou 100%).
+// (Quem você mutou DE PROPÓSITO também volta uma vez — é só mutar de novo.)
+(function repairStuckVolumes() {
+  const FLAG = "audioPrefsRepairV1";
+  try {
+    if (localStorage.getItem(FLAG)) return;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(VOLUME_PREFIX) || localStorage.getItem(key) !== "0") continue;
+      const identity = key.slice(VOLUME_PREFIX.length);
+      const last = Number(localStorage.getItem(LAST_VOLUME_PREFIX + identity) || "1");
+      localStorage.setItem(key, String(last > 0 ? last : 1));
+    }
+    localStorage.setItem(FLAG, "1");
+  } catch {
+    // sem localStorage: nada a consertar
+  }
+})();
 
 export function subscribe(listener: Listener): () => void {
   listeners.add(listener);

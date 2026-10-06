@@ -17,9 +17,10 @@ const MAX_TEXT_LENGTH = 2000;
 
 // Anexo é opcional e pode vir SOZINHO (sem texto, ex: mandou só um GIF)
 // ou junto com texto (ex: legenda + imagem). "gif" é uma URL externa
-// (Klipy), "image"/"audio" apontam pro nosso próprio /attachments/files.
-type AttachmentType = "image" | "audio" | "gif";
-const ALLOWED_ATTACHMENT_TYPES: AttachmentType[] = ["image", "audio", "gif"];
+// (Klipy); "image"/"audio"/"video"/"file" apontam pro nosso próprio
+// /attachments/files ("file" = qualquer arquivo, mostrado como download).
+type AttachmentType = "image" | "audio" | "video" | "file" | "gif";
+const ALLOWED_ATTACHMENT_TYPES: AttachmentType[] = ["image", "audio", "video", "file", "gif"];
 
 interface ChatMessage {
   id: string;
@@ -300,7 +301,10 @@ function handleSend(data: unknown, username: string) {
   const hasAttachment =
     typeof rawAttachmentUrl === "string" &&
     rawAttachmentUrl.length > 0 &&
-    ALLOWED_ATTACHMENT_TYPES.includes(rawAttachmentType);
+    ALLOWED_ATTACHMENT_TYPES.includes(rawAttachmentType) &&
+    // Tudo que não é GIF (URL externa da Klipy) tem que apontar pra um
+    // arquivo enviado aqui mesmo — impede mandar um link qualquer como "anexo".
+    (rawAttachmentType === "gif" || rawAttachmentUrl.startsWith("/attachments/files/"));
 
   // Mensagem precisa ter CANAL válido e (TEXTO ou ANEXO) — as duas vazias
   // não é uma mensagem de verdade.

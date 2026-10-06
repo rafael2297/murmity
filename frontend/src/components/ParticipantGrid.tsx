@@ -9,6 +9,7 @@ import {
   isScreenAudioMuted,
   toggleScreenAudioMute,
   isDeafened,
+  isScreenShareMutingActive,
   subscribe,
 } from "../localAudioPrefs";
 
@@ -70,12 +71,15 @@ function ScreenShareAudioController({
   // compartilhada — sem mexer na preferência de mute daquela tela, que
   // volta a valer sozinha assim que a pessoa desensurdecer.
   const deafened = useSyncExternalStore(subscribe, () => isDeafened());
+  // Enquanto VOCÊ compartilha com o áudio do sistema inteiro (plano B de
+  // eco), o áudio de tela dos outros também fica mudo.
+  const shareMuting = useSyncExternalStore(subscribe, () => isScreenShareMutingActive());
 
   useEffect(() => {
     if (audioTrack instanceof RemoteAudioTrack) {
-      audioTrack.setVolume(muted || deafened ? 0 : 1);
+      audioTrack.setVolume(muted || deafened || shareMuting ? 0 : 1);
     }
-  }, [audioTrack, muted, deafened]);
+  }, [audioTrack, muted, deafened, shareMuting]);
 
   return null;
 }

@@ -17,18 +17,14 @@ import { useTracks, AudioTrack } from "@livekit/components-react";
  * inclusive ao vivo enquanto o som já está tocando). O usuário só ouvia a
  * cópia errada por cima, que nunca abaixava.
  *
- * A correção é só tocar Microphone aqui — excluindo ScreenShareAudio e
- * Unknown de propósito:
- * - ScreenShareAudio: já é tratado pelo ParticipantGrid.tsx via
- *   ScreenShareAudioController, que aplica mute/volume por participante
- *   (respeitando a preferência local de cada um).
- * - Unknown: soundboard é tratado pelo SoundboardAudioRenderer.tsx.
- *
- * Assim cada tipo de áudio tem UM único dono responsável por tocar e
- * controlar volume, sem conflito.
+ * A correção é só tocar Microphone e ScreenShareAudio aqui — excluindo
+ * Unknown de propósito — e deixar qualquer áudio "Unknown" (hoje só o
+ * soundboard, mas vale pra qualquer track futura publicada manualmente do
+ * mesmo jeito) inteiramente por conta de quem publicou essa track cuidar
+ * do próprio player e volume.
  */
 export default function VoiceAudioRenderer() {
-  const tracks = useTracks([Track.Source.Microphone], {
+  const tracks = useTracks([Track.Source.Microphone, Track.Source.ScreenShareAudio], {
     onlySubscribed: true,
   }).filter((t) => !t.participant.isLocal);
 

@@ -7,6 +7,7 @@ import EmojiManager from "./EmojiManager";
 import PushToTalkSettings from "./PushToTalkSettings";
 import { useConfirm } from "../ConfirmContext";
 import { getAppVersion } from "../host";
+import { getExcludeOwnAudio, setExcludeOwnAudio } from "../screenShareAudioPrefs";
 
 interface Props {
   onClose: () => void;
@@ -15,6 +16,44 @@ interface Props {
   backendUrl: string;
   authToken: string;
   onLogout: () => void;
+}
+
+function ShareOwnAudioToggle() {
+  const [enabled, setEnabled] = useState(getExcludeOwnAudio());
+
+  return (
+    <div className="device-select">
+      <label>Compartilhamento de tela</label>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "var(--text)" }}
+      >
+        <input
+          id="share-exclude-own-audio"
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => {
+            setEnabled(e.target.checked);
+            setExcludeOwnAudio(e.target.checked);
+          }}
+        />
+        <span
+          style={{ cursor: "pointer" }}
+          onClick={() => {
+            setEnabled(!enabled);
+            setExcludeOwnAudio(!enabled);
+          }}
+        >
+          Não enviar o áudio do Murmity na tela compartilhada (recomendado)
+        </span>
+      </div>
+      <p className="device-select-note">
+        Ligado (padrão): você continua ouvindo todo mundo e quem assiste não se ouve de volta — como no
+        Discord. Se alguém ficar sem ouvir NADA do seu PC, desligue: aí o app muta os outros enquanto
+        você compartilha. Em Windows mais antigo que o 10 22H2 não dá pra separar e esse modo é usado
+        sozinho. Vale na próxima vez que você compartilhar.
+      </p>
+    </div>
+  );
 }
 
 function DeviceSelect({ kind, label }: { kind: MediaDeviceKind; label: string }) {
@@ -144,21 +183,25 @@ export default function SettingsModal({
               </p>
             )}
 
-            {activeTab === "devices" &&
-              (inCall ? (
-                <>
-                  <DeviceSelect kind="audioinput" label="Microfone" />
-                  <DeviceSelect kind="videoinput" label="Câmera" />
-                  <DeviceSelect kind="audiooutput" label="Saída de áudio (alto-falante)" />
-                  <p className="device-select-note">
-                    Saída de áudio pode não funcionar no Firefox (suporte limitado do navegador).
+            {activeTab === "devices" && (
+              <>
+                {inCall ? (
+                  <>
+                    <DeviceSelect kind="audioinput" label="Microfone" />
+                    <DeviceSelect kind="videoinput" label="Câmera" />
+                    <DeviceSelect kind="audiooutput" label="Saída de áudio (alto-falante)" />
+                    <p className="device-select-note">
+                      Saída de áudio pode não funcionar no Firefox (suporte limitado do navegador).
+                    </p>
+                  </>
+                ) : (
+                  <p className="device-select-empty">
+                    Entre no canal de voz pra poder trocar microfone/câmera.
                   </p>
-                </>
-              ) : (
-                <p className="device-select-empty">
-                  Entre no canal de voz pra poder trocar microfone/câmera.
-                </p>
-              ))}
+                )}
+                <ShareOwnAudioToggle />
+              </>
+            )}
 
             {activeTab === "soundboard" && (
               <>

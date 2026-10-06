@@ -18,7 +18,7 @@ import {
   deleteEmoji as apiDeleteEmoji,
 } from "./api";
 
-export type AttachmentType = "image" | "audio" | "gif";
+export type AttachmentType = "image" | "audio" | "video" | "file" | "gif";
 
 export interface ChatAttachment {
   url: string;
@@ -216,7 +216,11 @@ export function ChatConnectionProvider({ backendUrl, authToken, username, childr
                   ? "[imagem]"
                   : data.message.attachmentType === "audio"
                     ? "[áudio]"
-                    : "");
+                    : data.message.attachmentType === "video"
+                      ? "[vídeo]"
+                      : data.message.attachmentType === "file"
+                        ? "[arquivo]"
+                        : "");
             notify(data.message.username, preview);
           }
         } else if (data.type === "presence") {

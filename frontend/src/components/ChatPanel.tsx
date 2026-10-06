@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Smile, SmilePlus, Paperclip, Image as ImageIcon, X, ArrowDown, Pencil, Trash2, CornerUpLeft } from "lucide-react";
+import { Smile, SmilePlus, Paperclip, Image as ImageIcon, X, ArrowDown, Pencil, Trash2, CornerUpLeft, FileText, Download } from "lucide-react";
 import { useChatConnection, ChatAttachment } from "../ChatConnectionContext";
 import { uploadAttachment, fetchLinkPreview, CustomEmoji, LinkPreview } from "../api";
 import { renderMessageContent, renderMessageText, buildEmojiUrlMap } from "../emojiText";
@@ -9,6 +9,7 @@ import EmojiPicker from "./EmojiPicker";
 import GifPicker from "./GifPicker";
 import YoutubeEmbed from "./YoutubeEmbed";
 import LinkPreviewCard from "./LinkPreviewCard";
+import "../chatAttachments.css";
 
 interface Props {
   username: string;
@@ -18,6 +19,45 @@ interface Props {
 
 function formatTime(timestamp: number) {
   return new Date(timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+type FileKind = "image" | "audio" | "video" | "file";
+
+// Mesmo limite do backend (attachments.ts) — avisa na hora, sem esperar o upload falhar.
+const MAX_FILE_MB = 50;
+const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
+const MAX_FILES_PER_SEND = 10;
+
+interface PendingFile {
+  id: string;
+  file: File;
+  kind: FileKind;
+  previewUrl: string | null; // miniatura local (imagem/vídeo) — só existe até enviar/remover
+}
+
+function kindOfFile(file: File): FileKind {
+  // SVG pode conter script, então trata como arquivo comum (só baixa).
+  if (file.type === "image/svg+xml") return "file";
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("audio/")) return "audio";
+  if (file.type.startsWith("video/")) return "video";
+  return "file";
+}
+
+// Baixa pelo app (fetch + blob) em vez de abrir uma janela: assim o arquivo
+// salva com o NOME ORIGINAL e funciona igual no Electron e no navegador.
+async function downloadFile(url: string, name: string) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Erro ${res.status}`);
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
 // Mensagens consecutivas da mesma pessoa em menos de 5 minutos ficam
@@ -42,7 +82,10 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
   // EmojiPicker do composer, só muda pra quem o resultado vai).
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
-  const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null);
+  // Arquivos escolhidos/arrastados, esperando você apertar "Enviar" (só então
+  // sobem pro servidor e viram mensagem) — como no Discord.
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [linkPreviews, setLinkPreviews] = useState<Map<string, LinkPreview>>(new Map());
@@ -54,6 +97,59 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
   const hasScrolledToInitialBottomRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingFilesRef = useRef<PendingFile[]>([]);
+  pendingFilesRef.current = pendingFiles;
+  const addFilesRef = useRef<(files: File[]) => void>(() => {});
+
+  // Libera as miniaturas locais ao sair do chat.
+  useEffect(
+    () => () => {
+      pendingFilesRef.current.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl));
+    },
+    []
+  );
+
+  // Arrastar arquivos pra QUALQUER lugar do app: mostra a área de soltar e,
+  // ao soltar, os arquivos entram na fila de anexos. O preventDefault é
+  // essencial: sem ele o navegador "abre" o arquivo e troca a tela do app.
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    const onDragEnter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth++;
+      setDragging(true);
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    };
+    const onDragLeave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setDragging(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setDragging(false);
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length > 0) addFilesRef.current(files);
+    };
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
 
   function isNearBottom(): boolean {
     const el = messagesContainerRef.current;
@@ -115,11 +211,41 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
 
   const emojiByCode = buildEmojiUrlMap(backendUrl, customEmojis);
 
-  function send() {
-    if (!draft.trim() && !pendingAttachment) return;
-    sendMessage(draft, pendingAttachment ?? undefined, replyingTo?.id);
+  async function send() {
+    if (uploading) return;
+    const text = draft;
+    const files = pendingFiles;
+    if (!text.trim() && files.length === 0) return;
+
+    if (files.length === 0) {
+      sendMessage(text, undefined, replyingTo?.id);
+    } else {
+      // Sobe os arquivos só agora. Se algum falhar, NADA é enviado e os
+      // arquivos continuam na fila pra você tentar de novo.
+      setUploading(true);
+      setUploadError(null);
+      try {
+        const uploaded: ChatAttachment[] = [];
+        for (const pending of files) {
+          const result = await uploadAttachment(backendUrl, authToken, pending.kind, pending.file);
+          uploaded.push({ url: result.url, type: result.type, name: result.name });
+        }
+        // O texto (e a resposta) vão junto com o 1º arquivo; cada arquivo
+        // seguinte vira uma mensagem logo depois.
+        uploaded.forEach((attachment, index) => {
+          sendMessage(index === 0 ? text : "", attachment, index === 0 ? replyingTo?.id : undefined);
+        });
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : "Erro ao enviar arquivo");
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
+      files.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl));
+      setPendingFiles([]);
+    }
+
     setDraft("");
-    setPendingAttachment(null);
     setReplyingTo(null);
     // Mandar uma mensagem é uma ação sua — faz sentido te levar de volta
     // pro final, mesmo que estivesse lendo histórico mais acima.
@@ -244,46 +370,75 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
     closeReactionPicker();
   }
 
-  async function uploadPickedFile(file: File) {
-    const kind = file.type.startsWith("audio/") ? "audio" : "image";
-    setUploading(true);
-    setUploadError(null);
-    try {
-      const uploaded = await uploadAttachment(backendUrl, authToken, kind, file);
-      setPendingAttachment({ url: uploaded.url, type: uploaded.type, name: uploaded.name });
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Erro ao enviar arquivo");
-    } finally {
-      setUploading(false);
-    }
-  }
+  // Coloca arquivos na fila (botão de anexo, arrastar, colar). Nada sobe
+  // pro servidor ainda — isso só acontece quando você aperta "Enviar".
+  function addFiles(files: File[]) {
+    const accepted: PendingFile[] = [];
+    let error: string | null = null;
+    const room = MAX_FILES_PER_SEND - pendingFilesRef.current.length;
 
-  async function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // permite escolher o mesmo arquivo de novo depois
-    if (!file) return;
-    await uploadPickedFile(file);
-  }
-
-  // Ctrl+V com uma imagem copiada (ex: print de tela) sobe ela igual ao
-  // botão de anexo — sem isso, colar uma imagem no campo de texto não
-  // fazia nada.
-  async function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const item of Array.from(items)) {
-      if (item.kind === "file" && item.type.startsWith("image/")) {
-        e.preventDefault();
-        const file = item.getAsFile();
-        if (file) await uploadPickedFile(file);
-        return;
+    for (const file of files) {
+      if (file.size === 0) {
+        error = `"${file.name}" está vazio (ou é uma pasta).`;
+      } else if (file.size > MAX_FILE_BYTES) {
+        error = `"${file.name}" passa de ${MAX_FILE_MB} MB.`;
+      } else if (accepted.length >= room) {
+        error = `Máximo de ${MAX_FILES_PER_SEND} arquivos por mensagem.`;
+      } else {
+        const kind = kindOfFile(file);
+        accepted.push({
+          id: `${file.name}-${file.size}-${Math.random().toString(36).slice(2)}`,
+          file,
+          kind,
+          previewUrl: kind === "image" || kind === "video" ? URL.createObjectURL(file) : null,
+        });
       }
     }
-    // Nada de imagem no clipboard — deixa o paste de texto normal acontecer.
+
+    setUploadError(error);
+    if (accepted.length > 0) {
+      setPendingFiles((prev) => [...prev, ...accepted]);
+      textareaRef.current?.focus();
+    }
+  }
+  addFilesRef.current = addFiles;
+
+  function removePendingFile(id: string) {
+    setPendingFiles((prev) => {
+      const removed = prev.find((p) => p.id === id);
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((p) => p.id !== id);
+    });
+    setUploadError(null);
+  }
+
+  function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ""; // permite escolher o mesmo arquivo de novo depois
+    if (files.length > 0) addFiles(files);
+  }
+
+  // Ctrl+V com arquivo(s) copiado(s) — um print de tela ou arquivos do
+  // Explorer — entra na fila igual ao botão de anexo. Se junto vier texto
+  // (ex: copiado de um documento), deixa o paste de texto normal acontecer.
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(e.clipboardData?.files ?? []);
+    if (files.length === 0 || e.clipboardData?.getData("text/plain")) return;
+    e.preventDefault();
+    addFiles(files);
+  }
+
+  async function handleDownload(url: string, name: string) {
+    try {
+      await downloadFile(url, name);
+    } catch {
+      setUploadError("Não consegui baixar o arquivo.");
+    }
   }
 
   return (
     <div className="chat-panel">
+      {dragging && <div className="chat-drop-overlay">Solte para anexar ao chat</div>}
       <div className="chat-messages" ref={messagesContainerRef}>
         {messages.length === 0 && <p className="chat-empty">Nenhuma mensagem ainda.</p>}
         {messages.map((m, i) => {
@@ -332,7 +487,11 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
                                 ? "[imagem]"
                                 : repliedMessage.attachmentType === "audio"
                                   ? "[áudio]"
-                                  : ""}
+                                  : repliedMessage.attachmentType === "video"
+                                    ? "[vídeo]"
+                                    : repliedMessage.attachmentType === "file"
+                                      ? "[arquivo]"
+                                      : ""}
                         </span>
                       </>
                     ) : (
@@ -390,6 +549,28 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
                     controls
                     src={m.attachmentUrl.startsWith("http") ? m.attachmentUrl : `${backendUrl}${m.attachmentUrl}`}
                   />
+                ) : m.attachmentUrl && m.attachmentType === "video" ? (
+                  <video
+                    className="chat-attachment-video"
+                    controls
+                    preload="metadata"
+                    src={m.attachmentUrl.startsWith("http") ? m.attachmentUrl : `${backendUrl}${m.attachmentUrl}`}
+                  />
+                ) : m.attachmentUrl && m.attachmentType === "file" ? (
+                  <button
+                    className="chat-attachment-file"
+                    title="Baixar arquivo"
+                    onClick={() =>
+                      handleDownload(
+                        m.attachmentUrl!.startsWith("http") ? m.attachmentUrl! : `${backendUrl}${m.attachmentUrl}`,
+                        m.attachmentName || "arquivo"
+                      )
+                    }
+                  >
+                    <FileText size={28} />
+                    <span className="chat-attachment-file-name">{m.attachmentName || "arquivo"}</span>
+                    <Download size={18} />
+                  </button>
                 ) : m.attachmentUrl ? (
                   <a
                     href={m.attachmentUrl.startsWith("http") ? m.attachmentUrl : `${backendUrl}${m.attachmentUrl}`}
@@ -475,28 +656,36 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
         </button>
       )}
 
-      {(pendingAttachment || uploading || uploadError) && (
-        <div className="chat-pending-attachment">
-          {uploading ? (
-            <span className="device-select-empty">Enviando arquivo...</span>
-          ) : uploadError ? (
-            <span className="soundboard-error">{uploadError}</span>
-          ) : pendingAttachment ? (
-            <>
-              {pendingAttachment.type === "audio" ? (
-                <span>🎵 {pendingAttachment.name || "áudio"}</span>
-              ) : (
-                <img src={`${backendUrl}${pendingAttachment.url}`} alt="" />
-              )}
+      {(pendingFiles.length > 0 || uploading || uploadError) && (
+        <div className="chat-pending-files">
+          {pendingFiles.map((p) => (
+            <div key={p.id} className="chat-pending-file">
+              <div className="chat-pending-file-thumb">
+                {p.kind === "image" && p.previewUrl ? (
+                  <img src={p.previewUrl} alt="" />
+                ) : p.kind === "video" && p.previewUrl ? (
+                  <video src={p.previewUrl} muted />
+                ) : p.kind === "audio" ? (
+                  <span>🎵</span>
+                ) : (
+                  <FileText size={22} />
+                )}
+              </div>
+              <span className="chat-pending-file-name" title={p.file.name}>
+                {p.file.name}
+              </span>
               <button
                 className="icon-btn small muted"
-                onClick={() => setPendingAttachment(null)}
+                onClick={() => removePendingFile(p.id)}
+                disabled={uploading}
                 title="Remover anexo"
               >
                 <X size={14} />
               </button>
-            </>
-          ) : null}
+            </div>
+          ))}
+          {uploading && <span className="chat-pending-status">Enviando arquivos...</span>}
+          {!uploading && uploadError && <span className="soundboard-error chat-pending-status">{uploadError}</span>}
         </div>
       )}
 
@@ -517,14 +706,14 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*,audio/*"
+          multiple
           hidden
           onChange={handleFilePicked}
         />
         <button
           className="icon-btn chat-emoji-btn"
           onClick={() => fileInputRef.current?.click()}
-          title="Anexar imagem ou áudio"
+          title="Anexar arquivos (ou arraste pra cá)"
         >
           <Paperclip size={20} />
         </button>
@@ -548,7 +737,7 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
         <button className="icon-btn chat-emoji-btn" onClick={() => { setReactionPickerFor(null); setEmojiPickerOpen(true); }} title="Emojis">
           <Smile size={20} />
         </button>
-        <button onClick={send} disabled={(!draft.trim() && !pendingAttachment) || !connected || uploading}>
+        <button onClick={send} disabled={(!draft.trim() && pendingFiles.length === 0) || !connected || uploading}>
           Enviar
         </button>
       </div>

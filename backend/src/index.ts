@@ -8,7 +8,7 @@ import roomsRouter from "./rooms";
 import channelsRouter from "./channels";
 import soundsRouter, { SOUNDS_DIR } from "./sounds";
 import emojisRouter, { EMOJIS_DIR } from "./emojis";
-import attachmentsRouter, { ATTACHMENTS_DIR } from "./attachments";
+import attachmentsRouter, { attachmentsStatic } from "./attachments";
 import linkPreviewRouter from "./linkpreview";
 import { setupChat } from "./chat";
 
@@ -24,7 +24,7 @@ app.use("/auth", identifyRouter);
 app.use("/rooms", roomsRouter);
 app.use("/channels", channelsRouter);
 // Arquivos de áudio do soundboard, imagens de emoji e anexos de chat
-// (imagem/áudio), servidos como estáticos (o upload em si é tratado nos
+// (imagem/áudio/vídeo/arquivo), servidos como estáticos (o upload em si é tratado nos
 // routers, com corpo bruto em vez de multipart). Busca de GIF não passa
 // pelo nosso backend — é feita direto do frontend pra API da Klipy, ver
 // GifPicker.tsx.
@@ -32,7 +32,7 @@ app.use("/sounds/files", express.static(SOUNDS_DIR));
 app.use("/sounds", soundsRouter);
 app.use("/emojis/files", express.static(EMOJIS_DIR));
 app.use("/emojis", emojisRouter);
-app.use("/attachments/files", express.static(ATTACHMENTS_DIR));
+app.use("/attachments/files", ...attachmentsStatic);
 app.use("/attachments", attachmentsRouter);
 app.use("/link-preview", linkPreviewRouter);
 

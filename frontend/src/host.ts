@@ -104,7 +104,7 @@ export function onUpdateStatus(callback: (status: UpdateStatus) => void): () => 
 
 /**
  * Este PC consegue compartilhar o áudio do sistema SEM o áudio do próprio
- * Murmity? (Windows build 20348+ com Electron 43.4+.) Se não, quem
+ * Murmity? (Windows 10 22H2 / build 19045 ou mais novo.) Se não, quem
  * compartilha precisa mutar os outros localmente pra ninguém se ouvir.
  */
 export async function canExcludeOwnAudio(): Promise<boolean> {
