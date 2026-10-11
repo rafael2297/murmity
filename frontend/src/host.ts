@@ -19,8 +19,10 @@ interface ElectronAPI {
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
   installUpdate: () => Promise<void>;
   getAppVersion: () => Promise<string>;
-  canExcludeOwnAudio: () => Promise<boolean>;
-  setScreenShareExcludeOwnAudio: (exclude: boolean) => Promise<void>;
+  downloadFile: (url: string) => Promise<void>;
+  startSystemAudio: () => Promise<boolean>;
+  stopSystemAudio: () => Promise<void>;
+  onSystemAudioChunk: (callback: (chunk: Uint8Array) => void) => () => void;
   onRequestCloseChoice: (callback: () => void) => () => void;
   respondCloseChoice: (choice: CloseChoice) => void;
   registerMuteShortcut: (accelerator: string | null) => Promise<boolean>;
@@ -104,25 +106,40 @@ export function onUpdateStatus(callback: (status: UpdateStatus) => void): () => 
 }
 
 /**
- * Este PC consegue compartilhar o áudio do sistema SEM o áudio do próprio
- * Murmity? (Windows 10 22H2 / build 19045 ou mais novo.) Se não, quem
- * compartilha precisa mutar os outros localmente pra ninguém se ouvir.
+ * Baixa um arquivo pelo próprio Electron (abre "Salvar como" e grava direto
+ * no disco, sem carregar o arquivo inteiro na memória). false = fora do Electron.
  */
-export async function canExcludeOwnAudio(): Promise<boolean> {
+export async function downloadUrl(url: string): Promise<boolean> {
+  const api = getElectronAPI();
+  if (!api) return false;
   try {
-    return (await getElectronAPI()?.canExcludeOwnAudio()) ?? false;
+    await api.downloadFile(url);
+    return true;
   } catch {
     return false;
   }
 }
 
-/** Avisa o Electron, antes de compartilhar a tela, se o áudio do sistema deve ir SEM o do Murmity. */
-export async function setScreenShareExcludeOwnAudio(exclude: boolean): Promise<void> {
+/** Começa a capturar o áudio do PC SEM o do Murmity (Electron/Windows). false = não foi possível. */
+export async function startSystemAudio(): Promise<boolean> {
   try {
-    await getElectronAPI()?.setScreenShareExcludeOwnAudio(exclude);
+    return (await getElectronAPI()?.startSystemAudio()) ?? false;
+  } catch {
+    return false;
+  }
+}
+
+export async function stopSystemAudio(): Promise<void> {
+  try {
+    await getElectronAPI()?.stopSystemAudio();
   } catch {
     // sem Electron: nada a fazer
   }
+}
+
+/** Recebe os lotes de áudio capturado (float32, estéreo intercalado, 48 kHz). Devolve a função pra parar de ouvir. */
+export function onSystemAudioChunk(callback: (chunk: Uint8Array) => void): () => void {
+  return getElectronAPI()?.onSystemAudioChunk(callback) ?? (() => {});
 }
 
 /** Versão instalada do app (ex: "1.9.1"). Fora do Electron devolve null. */

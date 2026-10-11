@@ -9,9 +9,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   stopLiveKit: () => ipcRenderer.invoke("stop-livekit"),
   getDesktopSources: () => ipcRenderer.invoke("get-desktop-sources"),
   setScreenShareSource: (id) => ipcRenderer.invoke("set-screen-share-source", id),
-  canExcludeOwnAudio: () => ipcRenderer.invoke("can-exclude-own-audio"),
-  setScreenShareExcludeOwnAudio: (exclude) =>
-    ipcRenderer.invoke("set-screen-share-exclude-own-audio", exclude),
+  downloadFile: (url) => ipcRenderer.invoke("download-file", url),
+  startSystemAudio: () => ipcRenderer.invoke("start-system-audio"),
+  stopSystemAudio: () => ipcRenderer.invoke("stop-system-audio"),
+  onSystemAudioChunk: (callback) => {
+    const listener = (_event, chunk) => callback(chunk);
+    ipcRenderer.on("system-audio-chunk", listener);
+    return () => ipcRenderer.removeListener("system-audio-chunk", listener);
+  },
   focusWindow: () => ipcRenderer.invoke("focus-window"),
   onHostLog: (callback) => {
     const listener = (_event, line) => callback(line);

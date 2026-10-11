@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Smile, SmilePlus, Paperclip, Image as ImageIcon, X, ArrowDown, Pencil, Trash2, CornerUpLeft, FileText, Download } from "lucide-react";
 import { useChatConnection, ChatAttachment } from "../ChatConnectionContext";
 import { uploadAttachment, fetchLinkPreview, CustomEmoji, LinkPreview } from "../api";
+import { downloadUrl } from "../host";
 import { renderMessageContent, renderMessageText, buildEmojiUrlMap } from "../emojiText";
 import { extractFirstUrl } from "../links";
 import { useConfirm } from "../ConfirmContext";
@@ -23,9 +24,7 @@ function formatTime(timestamp: number) {
 
 type FileKind = "image" | "audio" | "video" | "file";
 
-// Mesmo limite do backend (attachments.ts) — avisa na hora, sem esperar o upload falhar.
-const MAX_FILE_MB = 50;
-const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
+// Não existe limite de TAMANHO de arquivo; só de quantidade por mensagem.
 const MAX_FILES_PER_SEND = 10;
 
 interface PendingFile {
@@ -44,20 +43,18 @@ function kindOfFile(file: File): FileKind {
   return "file";
 }
 
-// Baixa pelo app (fetch + blob) em vez de abrir uma janela: assim o arquivo
-// salva com o NOME ORIGINAL e funciona igual no Electron e no navegador.
+// Baixa o arquivo com o NOME ORIGINAL. No Electron o download é feito pelo
+// próprio app (grava direto no disco, qualquer tamanho); no navegador, o
+// servidor já responde como "anexo" e o navegador baixa sozinho.
 async function downloadFile(url: string, name: string) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Erro ${res.status}`);
-  const blob = await res.blob();
-  const objectUrl = URL.createObjectURL(blob);
+  const fullUrl = `${url}?name=${encodeURIComponent(name)}`;
+  if (await downloadUrl(fullUrl)) return;
   const link = document.createElement("a");
-  link.href = objectUrl;
+  link.href = fullUrl;
   link.download = name;
   document.body.appendChild(link);
   link.click();
   link.remove();
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
 // Mensagens consecutivas da mesma pessoa em menos de 5 minutos ficam
@@ -87,6 +84,7 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0); // 0 a 1, de todos os arquivos juntos
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [linkPreviews, setLinkPreviews] = useState<Map<string, LinkPreview>>(new Map());
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
@@ -226,8 +224,12 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
       setUploadError(null);
       try {
         const uploaded: ChatAttachment[] = [];
-        for (const pending of files) {
-          const result = await uploadAttachment(backendUrl, authToken, pending.kind, pending.file);
+        setUploadProgress(0);
+        for (let index = 0; index < files.length; index++) {
+          const pending = files[index];
+          const result = await uploadAttachment(backendUrl, authToken, pending.kind, pending.file, (fraction) =>
+            setUploadProgress((index + fraction) / files.length)
+          );
           uploaded.push({ url: result.url, type: result.type, name: result.name });
         }
         // O texto (e a resposta) vão junto com o 1º arquivo; cada arquivo
@@ -380,8 +382,6 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
     for (const file of files) {
       if (file.size === 0) {
         error = `"${file.name}" está vazio (ou é uma pasta).`;
-      } else if (file.size > MAX_FILE_BYTES) {
-        error = `"${file.name}" passa de ${MAX_FILE_MB} MB.`;
       } else if (accepted.length >= room) {
         error = `Máximo de ${MAX_FILES_PER_SEND} arquivos por mensagem.`;
       } else {
@@ -684,7 +684,9 @@ export default function ChatPanel({ username, backendUrl, authToken }: Props) {
               </button>
             </div>
           ))}
-          {uploading && <span className="chat-pending-status">Enviando arquivos...</span>}
+          {uploading && (
+            <span className="chat-pending-status">Enviando arquivos... {Math.round(uploadProgress * 100)}%</span>
+          )}
           {!uploading && uploadError && <span className="soundboard-error chat-pending-status">{uploadError}</span>}
         </div>
       )}

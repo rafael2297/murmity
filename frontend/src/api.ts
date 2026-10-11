@@ -276,22 +276,43 @@ export async function searchGifs(
  * fluxo é: faz esse upload primeiro, pega a URL de volta, e só então
  * manda a mensagem de chat de verdade (via WebSocket) com essa URL.
  */
-export async function uploadAttachment(
+export function uploadAttachment(
   backendUrl: string,
   authToken: string,
   kind: "image" | "audio" | "video" | "file",
-  file: File
+  file: File,
+  onProgress?: (fraction: number) => void
 ): Promise<UploadedAttachment> {
-  const params = new URLSearchParams({ kind, filename: file.name });
-  const res = await fetch(`${backendUrl}/attachments?${params.toString()}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${authToken}`,
-      "Content-Type": file.type || "application/octet-stream",
-    },
-    body: file,
+  // XMLHttpRequest (e não fetch) porque só ele informa o progresso do envio —
+  // essencial pra arquivos grandes. O arquivo vai em streaming, sem ser
+  // carregado inteiro na memória.
+  return new Promise((resolve, reject) => {
+    const params = new URLSearchParams({ kind, filename: file.name });
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${backendUrl}/attachments?${params.toString()}`);
+    xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
+    // Sempre "octet-stream": se fosse application/json, o servidor tentaria
+    // ler o arquivo como JSON em vez de gravar.
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(event.loaded / event.total);
+    };
+    xhr.onload = () => {
+      let data: any = null;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        // resposta sem JSON
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data);
+      } else {
+        reject(new Error(data?.error || `Erro ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Falha de rede ao enviar o arquivo"));
+    xhr.send(file);
   });
-  return parseJsonOrThrow(res);
 }
 
 /**

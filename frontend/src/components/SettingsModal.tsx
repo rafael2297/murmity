@@ -43,14 +43,14 @@ function ShareOwnAudioToggle() {
             setExcludeOwnAudio(!enabled);
           }}
         >
-          Não enviar o áudio do Murmity na tela compartilhada (recomendado)
+          Compartilhar o áudio do PC junto com a tela (sem o áudio do Murmity)
         </span>
       </div>
       <p className="device-select-note">
-        Ligado (padrão): você continua ouvindo todo mundo e quem assiste não se ouve de volta — como no
-        Discord. Se alguém ficar sem ouvir NADA do seu PC, desligue: aí o app muta os outros enquanto
-        você compartilha. Em Windows mais antigo que o 10 22H2 não dá pra separar e esse modo é usado
-        sozinho. Vale na próxima vez que você compartilhar.
+        Ligado (padrão): quem assiste ouve o áudio do seu PC, mas nunca as vozes da chamada nem o próprio
+        Murmity — ninguém se ouve de volta e ninguém fica mutado. Desligado: a tela vai só com o vídeo,
+        sem áudio. Se o seu Windows não conseguir separar o áudio do Murmity, o app compartilha só o
+        vídeo. Vale na próxima vez que você compartilhar.
       </p>
     </div>
   );

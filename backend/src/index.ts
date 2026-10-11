@@ -39,6 +39,9 @@ app.use("/link-preview", linkPreviewRouter);
 // WebSocket precisa de um servidor HTTP explícito (não dá pra usar
 // app.listen direto quando também tem WS na mesma porta).
 const server = http.createServer(app);
+// O Node corta qualquer requisição que demore mais de 5 minutos (inclusive o
+// envio do corpo). Arquivos grandes demoram mais que isso — sem limite de tempo.
+server.requestTimeout = 0;
 const wss = new WebSocketServer({ server, path: "/ws/chat" });
 setupChat(wss);
 

@@ -16,13 +16,6 @@ const VOLUME_PREFIX = "voiceVolume:";
 const LAST_VOLUME_PREFIX = "voiceVolumeLast:"; // lembra o volume de antes de mutar
 const SCREEN_AUDIO_MUTED_PREFIX = "screenAudioMuted:";
 
-// Plano B de eco ao compartilhar a tela: enquanto está ligado, TODO áudio
-// vindo dos outros toca com volume 0 — mas isso é só um "interruptor"
-// temporário em memória, que NÃO mexe no volume salvo de ninguém. Antes o
-// volume salvo (localStorage) era zerado e restaurado depois; se o app
-// fechasse no meio do compartilhamento, a pessoa ficava gravada como
-// "mutada" pra sempre (era o "aparece mutada mesmo não estando").
-let screenShareMuting = false;
 
 // Ensurdecer (deafen) é um estado global da call, não por participante —
 // por isso vive em memória (não no localStorage): é algo do tipo "agora,
@@ -57,7 +50,7 @@ export function getVolume(identity: string): number {
 // sem apagar a preferência individual salva — ao desensurdecer, cada
 // um volta a tocar no volume que já estava configurado antes.
 export function getEffectiveVolume(identity: string): number {
-  return deafened || screenShareMuting ? 0 : getVolume(identity);
+  return deafened ? 0 : getVolume(identity);
 }
 
 export function isMuted(identity: string): boolean {
@@ -109,31 +102,6 @@ export function toggleScreenAudioMute(identity: string) {
   const next = !isScreenAudioMuted(identity);
   localStorage.setItem(SCREEN_AUDIO_MUTED_PREFIX + identity, next ? "1" : "0");
   notify();
-}
-
-/**
- * Plano B de eco: enquanto você compartilha a tela com o áudio do sistema
- * inteiro (Windows que não separa o áudio do Murmity), tudo que vem dos
- * outros toca com volume 0 pra a voz deles não voltar pra quem assiste.
- * Vale também pra quem entrar no meio do compartilhamento. Não altera o
- * volume salvo de ninguém e não afeta o que os outros ouvem.
- *
- * @returns Função pra desligar (chamar ao parar o compartilhamento)
- */
-export function muteAllForScreenShare(_identities?: string[]): () => void {
-  screenShareMuting = true;
-  notify();
-  return () => {
-    screenShareMuting = false;
-    notify();
-  };
-}
-
-/**
- * Verifica se o mute do compartilhamento de tela está ativo.
- */
-export function isScreenShareMutingActive(): boolean {
-  return screenShareMuting;
 }
 
 // Conserto único: versões anteriores gravavam volume 0 (mutado) quando você

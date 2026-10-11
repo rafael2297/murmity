@@ -5,12 +5,13 @@ const os = require("os");
 const { spawn } = require("child_process");
 const { autoUpdater } = require("electron-updater");
 
+const systemAudio = require("./systemAudio.cjs");
+
 let mainWindow = null;
 let tray = null;
 let backendProcess = null;
 let livekitProcess = null;
 let pendingScreenShareSourceId = null;
-let pendingScreenShareExcludeOwnAudio = false;
 // Atalho global de alternar mudo (Ctrl+Shift+M por padrão, configurável
 // nas Configurações → Atalhos). Só existe UM por vez — trocar de atalho
 // significa desregistrar este antes de registrar o novo.
@@ -252,27 +253,26 @@ ipcMain.handle("get-desktop-sources", async () => {
   }));
 });
 
-// Tirar o áudio do próprio Murmity da captura do sistema (pra ninguém se
-// ouvir de volta na tela compartilhada) usa a "captura de áudio por
-// processo" do Windows. Ela funciona no Windows 10 22H2 (build 19045) e no
-// Windows 11 — mesmo critério usado por apps como o Vesktop, que testaram:
-// no build 19041 essa captura falha. Em Windows mais antigo o React cai no
-// plano B (mutar os outros localmente). Quem pede a exclusão é o React, com
-// audio: { restrictOwnAudio: true } — o Electron 43.4+ traduz isso sozinho.
-const MIN_WINDOWS_BUILD_OWN_AUDIO_EXCLUSION = 19045;
+// Download de arquivo do chat: o Electron grava direto no disco (com a janela
+// "Salvar como"), então funciona com arquivos de qualquer tamanho.
+ipcMain.handle("download-file", (_event, url) => {
+  if (typeof url === "string" && /^https?:\/\//.test(url) && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.downloadURL(url);
+  }
+});
 
-function windowsSupportsOwnAudioExclusion() {
-  if (process.platform !== "win32") return false;
-  const build = Number(os.release().split(".")[2]);
-  return Number.isFinite(build) && build >= MIN_WINDOWS_BUILD_OWN_AUDIO_EXCLUSION;
-}
+// Áudio do PC SEM o áudio do Murmity (como o Discord): captura nativa em
+// systemAudio.cjs. O React pede pra começar/parar e recebe o áudio em lotes.
+ipcMain.handle("start-system-audio", () => {
+  return systemAudio.start((data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("system-audio-chunk", data);
+    }
+  });
+});
 
-ipcMain.handle("can-exclude-own-audio", () => windowsSupportsOwnAudioExclusion());
-
-// O React avisa, antes de compartilhar, se quer o áudio do sistema SEM o do
-// Murmity. Usado (e zerado) no handler de captura mais abaixo.
-ipcMain.handle("set-screen-share-exclude-own-audio", (_event, exclude) => {
-  pendingScreenShareExcludeOwnAudio = Boolean(exclude);
+ipcMain.handle("stop-system-audio", () => {
+  systemAudio.stop();
 });
 
 ipcMain.handle("set-screen-share-source", (_event, sourceId) => {
@@ -409,6 +409,7 @@ ipcMain.handle("install-update", async () => {
   // atualização. Também paramos backend/LiveKit antes, senão os .exe
   // deles continuam abertos e o instalador reclama que o app está em uso.
   isQuitting = true;
+  systemAudio.stop();
   await stopAllSidecarsAndWait();
   autoUpdater.quitAndInstall();
 });
@@ -427,17 +428,10 @@ app.whenReady().then(() => {
     desktopCapturer.getSources({ types: ["screen", "window"] }).then((sources) => {
       const chosen = sources.find((s) => s.id === pendingScreenShareSourceId) || sources[0];
       pendingScreenShareSourceId = null;
-      // "loopback" pede o áudio do sistema (Windows) junto com o vídeo,
-      // complementando o systemAudio:"include" pedido do lado do React.
-      // "loopbackWithoutChrome" é o mesmo, mas SEM o áudio do próprio Murmity
-      // (vozes dos outros, soundboard etc.) — é o que o Vesktop/Discord fazem.
-      // Pedimos o dispositivo explicitamente (em vez de só confiar no
-      // restrictOwnAudio do navegador) porque foi o que já se provou
-      // funcionar no Windows 10 22H2+ e no 11.
-      const excludeOwnAudio =
-        pendingScreenShareExcludeOwnAudio && windowsSupportsOwnAudioExclusion();
-      pendingScreenShareExcludeOwnAudio = false;
-      callback({ video: chosen, audio: excludeOwnAudio ? "loopbackWithoutChrome" : "loopback" });
+      // Só o VÍDEO: o áudio do PC vem da captura nativa (systemAudio.cjs),
+      // que deixa o áudio do próprio Murmity de fora. O "loopback" do
+      // Chromium incluía as vozes dos outros — era o eco.
+      callback({ video: chosen });
     });
   });
 
@@ -499,6 +493,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  systemAudio.stop();
   // Qualquer saída de verdade (atualização, desligar o Windows, "Sair" da
   // bandeja) não deve cair no modal de "minimizar ou fechar".
   isQuitting = true;

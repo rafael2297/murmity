@@ -6,7 +6,6 @@ import {
   getScreenAudioVolume,
   isDeafened,
   isScreenAudioMuted,
-  isScreenShareMutingActive,
   subscribe,
 } from "../localAudioPrefs";
 
@@ -37,12 +36,11 @@ function ScreenAudio({ trackRef }: { trackRef: TrackRef }) {
   const identity = trackRef.participant.identity;
   const mutedByUser = useSyncExternalStore(subscribe, () => isScreenAudioMuted(identity));
   const deafened = useSyncExternalStore(subscribe, () => isDeafened());
-  const shareMuting = useSyncExternalStore(subscribe, () => isScreenShareMutingActive());
   const userVolume = useSyncExternalStore(subscribe, () => getScreenAudioVolume(identity));
   return (
     <PlayedAudio
       trackRef={trackRef}
-      volume={mutedByUser || deafened || shareMuting ? 0 : userVolume}
+      volume={mutedByUser || deafened ? 0 : userVolume}
     />
   );
 }

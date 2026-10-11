@@ -85,6 +85,12 @@
         "repo": "murmity",
         "releaseType": "release"
       }
+    ],
+    "asarUnpack": [
+      "node_modules/wasapi-loopback/**"
     ]
+  },
+  "optionalDependencies": {
+    "wasapi-loopback": "git+https://github.com/thomas-quant/wasapi-loopback.git#1ecb8ec403bbc010e5951cd9cf491e2e3ad1b2e0"
   }
 }
